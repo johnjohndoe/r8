@@ -114,7 +114,7 @@ configurations {
 
 dependencies {
     compile 'net.sf.jopt-simple:jopt-simple:4.6'
-    compile 'com.googlecode.json-simple:json-simple:1.1.1'
+    compile 'com.googlecode.json-simple:json-simple:1.1'
     compile group: 'com.google.guava', name: 'guava', version: '19.0'
     compile group: 'it.unimi.dsi', name: 'fastutil', version: '7.2.0'
     compile group: 'org.apache.commons', name: 'commons-compress', version: '1.12'
@@ -326,12 +326,15 @@ task R8(type: com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
     // In order to build without dependencies, pass the exclude_deps property using:
     // gradle -Pexclude_deps R8
     if (!project.hasProperty('exclude_deps')) {
-        // Relocating dependencies to avoid conflicts.
-        relocate 'com.google', 'com.android.tools.r8.com.google'
+        // Relocating dependencies to avoid conflicts. Keep this as precise as possible
+        // to avoid rewriting unrelated strings.
+        relocate 'com.google.common', 'com.android.tools.r8.com.google.common'
+        relocate 'com.google.thirdparty', 'com.android.tools.r8.com.google.thirdparty'
         relocate 'joptsimple', 'com.android.tools.r8.joptsimple'
-        relocate 'org', 'com.android.tools.r8.org'
+        relocate 'org.apache.commons', 'com.android.tools.r8.org.apache.commons'
+        relocate 'org.objectweb.asm', 'com.android.tools.r8.org.objectweb.asm'
+        relocate 'org.json.simple', 'com.android.tools.r8.org.json.simple'
         relocate 'it.unimi.dsi.fastutil', 'com.android.tools.r8.it.unimi.dsi.fastutil'
-        relocate 'junit', 'com.android.tools.r8.junit'
         // Also include dependencies
         configurations = [project.configurations.compile]
     }
@@ -348,12 +351,15 @@ task D8(type: com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
     // In order to build without dependencies, pass the exclude_deps property using:
     // gradle -Pexclude_deps D8
     if (!project.hasProperty('exclude_deps')) {
-        // Relocating dependencies to avoid conflicts.
-        relocate 'com.google', 'com.android.tools.r8.com.google'
+        // Relocating dependencies to avoid conflicts. Keep this as precise as possible
+        // to avoid rewriting unrelated strings.
+        relocate 'com.google.common', 'com.android.tools.r8.com.google.common'
+        relocate 'com.google.thirdparty', 'com.android.tools.r8.com.google.thirdparty'
         relocate 'joptsimple', 'com.android.tools.r8.joptsimple'
-        relocate 'org', 'com.android.tools.r8.org'
+        relocate 'org.apache.commons', 'com.android.tools.r8.org.apache.commons'
+        relocate 'org.objectweb.asm', 'com.android.tools.r8.org.objectweb.asm'
+        relocate 'org.json.simple', 'com.android.tools.r8.org.json.simple'
         relocate 'it.unimi.dsi.fastutil', 'com.android.tools.r8.it.unimi.dsi.fastutil'
-        relocate 'junit', 'com.android.tools.r8.junit'
         // Also include dependencies
         configurations = [project.configurations.compile]
     }
