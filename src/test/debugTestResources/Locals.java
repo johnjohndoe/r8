@@ -244,6 +244,14 @@ public class Locals {
     return sum + x + y;
   }
 
+  public static String regression65039701(boolean createIntNotLong) {
+    Object a = createIntNotLong ? new int[1] : new long[1];
+    if (a instanceof int []) {
+      ((int [])a)[0] = 0;
+    }
+    return "OK";
+  }
+
   public static void main(String[] args) {
     noLocals();
     unusedLocals();
@@ -259,5 +267,6 @@ public class Locals {
     stepNonEmptyForLoopBody(3);
     tempInCase(42);
     localSwap(1, 2);
+    regression65039701(true);
   }
 }
