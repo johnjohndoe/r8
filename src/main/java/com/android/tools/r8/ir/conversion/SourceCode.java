@@ -6,6 +6,7 @@ package com.android.tools.r8.ir.conversion;
 
 import com.android.tools.r8.graph.DebugLocalInfo;
 import com.android.tools.r8.ir.code.CatchHandlers;
+import com.android.tools.r8.ir.code.DebugPosition;
 
 /**
  * Abstraction of the input/source code for the IRBuilder.
@@ -25,6 +26,8 @@ public interface SourceCode {
   boolean needsPrelude();
 
   DebugLocalInfo getCurrentLocal(int register);
+
+  DebugPosition getDebugPositionAtOffset(int offset);
 
   /**
    * Trace block structure of the source-program.
@@ -57,6 +60,7 @@ public interface SourceCode {
   void resolveAndBuildNewArrayFilledData(int arrayRef, int payloadOffset, IRBuilder builder);
 
   CatchHandlers<Integer> getCurrentCatchHandlers();
+  int getMoveExceptionRegister();
 
   // For debugging/verification purpose.
   boolean verifyRegister(int register);
