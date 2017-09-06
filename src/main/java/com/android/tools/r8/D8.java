@@ -55,7 +55,7 @@ import java.util.concurrent.ExecutorService;
  */
 public final class D8 {
 
-  private static final String VERSION = "v0.1.9";
+  private static final String VERSION = "v0.1.10";
   private static final int STATUS_ERROR = 1;
 
   private D8() {}

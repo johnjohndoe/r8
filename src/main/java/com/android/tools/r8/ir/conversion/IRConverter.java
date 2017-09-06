@@ -233,9 +233,6 @@ public class IRConverter {
     }
 
     ThreadUtils.awaitFutures(futures);
-
-    // Get rid of <clinit> methods with no code.
-    removeEmptyClassInitializers();
   }
 
   private void convertMethodToDex(DexEncodedMethod method) {
@@ -281,9 +278,6 @@ public class IRConverter {
     }, executorService);
     timing.end();
 
-    // Get rid of <clinit> methods with no code.
-    removeEmptyClassInitializers();
-
     // Build a new application with jumbo string info.
     Builder builder = new Builder(application);
     builder.setHighestSortingString(highestSortingString);
@@ -323,16 +317,6 @@ public class IRConverter {
     }
     clearDexMethodCompilationState();
     return builder.build();
-  }
-
-  private void removeEmptyClassInitializers() {
-    application.classes().forEach(this::removeEmptyClassInitializer);
-  }
-
-  private void removeEmptyClassInitializer(DexProgramClass clazz) {
-    if (clazz.hasTrivialClassInitializer()) {
-      clazz.removeStaticMethod(clazz.getClassInitializer());
-    }
   }
 
   private void clearDexMethodCompilationState() {
@@ -473,7 +457,9 @@ public class IRConverter {
     codeRewriter.foldConstants(code);
     codeRewriter.rewriteSwitch(code);
     codeRewriter.simplifyIf(code);
-    codeRewriter.collectClassInitializerDefaults(method, code);
+    if (!options.debug) {
+      codeRewriter.collectClassInitializerDefaults(method, code);
+    }
     if (Log.ENABLED) {
       Log.debug(getClass(), "Intermediate (SSA) flow graph for %s:\n%s",
           method.toSourceString(), code);

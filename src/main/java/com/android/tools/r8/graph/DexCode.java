@@ -81,6 +81,17 @@ public class DexCode extends Code {
     this.debugInfo = debugInfo;
   }
 
+  public boolean hasDebugPositions() {
+    if (debugInfo != null) {
+      for (DexDebugEvent event : debugInfo.events) {
+        if (event instanceof DexDebugEvent.Default) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   public DexDebugInfo debugInfoWithAdditionalFirstParameter(DexString name) {
     if (debugInfo == null) {
       return null;
@@ -142,7 +153,7 @@ public class DexCode extends Code {
     return false;
   }
 
-  boolean isEmptyVoidMethod() {
+  public boolean isEmptyVoidMethod() {
     return instructions.length == 1 && instructions[0] instanceof ReturnVoid;
   }
 
