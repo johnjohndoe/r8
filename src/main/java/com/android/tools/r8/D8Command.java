@@ -27,14 +27,18 @@ import java.util.Collection;
  *     .build();
  * </pre>
  */
-public class D8Command extends BaseCommand {
+public class D8Command extends BaseCompilerCommand {
 
   /**
    * Builder for constructing a D8Command.
    */
-  public static class Builder extends BaseCommand.Builder<D8Command, Builder> {
+  public static class Builder extends BaseCompilerCommand.Builder<D8Command, Builder> {
 
     private boolean intermediate = false;
+
+    protected Builder(boolean ignoreDexInArchive) {
+      super(CompilationMode.DEBUG, ignoreDexInArchive);
+    }
 
     protected Builder() {
       super(CompilationMode.DEBUG);
