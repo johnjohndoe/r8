@@ -663,6 +663,13 @@ public class CodeRewriter {
     if (exit == null) {
       return;
     }
+    DexClass clazz = appInfo.definitionFor(method.method.getHolder());
+    if (clazz == null) {
+      // TODO(67672280): Synthesized lambda classes are also optimized. However, they are not
+      // added to the AppInfo.
+      assert method.accessFlags.isSynthetic();
+      return;
+    }
     Set<StaticPut> puts = Sets.newIdentityHashSet();
     Map<DexField, StaticPut> dominatingPuts = Maps.newIdentityHashMap();
     for (BasicBlock block : dominatorTree.dominatorBlocks(exit)) {
@@ -672,7 +679,7 @@ public class CodeRewriter {
         if (current.isStaticPut()) {
           StaticPut put = current.asStaticPut();
           DexField field = put.getField();
-          if (field.getHolder() == method.method.getHolder()) {
+          if (clazz.definesStaticField(field)) {
             if (put.inValue().isConstant()) {
               if ((field.type.isClassType() || field.type.isArrayType())
                   && put.inValue().getConstInstruction().isConstNumber() &&
@@ -709,10 +716,6 @@ public class CodeRewriter {
       for (StaticPut put : dominatingPuts.values()) {
         DexField field = put.getField();
         DexEncodedField encodedField = appInfo.definitionFor(field);
-        if (encodedField == null) {
-          // See b/67468748.
-          continue;
-        }
         if (field.type == dexItemFactory.stringType) {
           if (put.inValue().isConstant()) {
             if (put.inValue().getConstInstruction().isConstNumber()) {
