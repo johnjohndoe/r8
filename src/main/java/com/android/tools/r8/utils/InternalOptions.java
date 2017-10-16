@@ -363,6 +363,6 @@ public class InternalOptions {
   //
   // https://android.googlesource.com/platform/dalvik/+/ics-mr0/vm/mterp/out/InterpAsm-x86-atom.S#25106
   public boolean canUseFilledNewArrayOfObjects() {
-    return minApiLevel >= AndroidApiLevel.K.getLevel();
+    return minApiLevel >= Constants.ANDROID_K_API;
   }
 }
