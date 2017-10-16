@@ -89,7 +89,7 @@ public class IRConverter {
     this.graphLense = graphLense != null ? graphLense : GraphLense.getIdentityLense();
     this.options = options;
     this.printer = printer;
-    this.codeRewriter = new CodeRewriter(appInfo, libraryMethodsReturningReceiver());
+    this.codeRewriter = new CodeRewriter(appInfo, libraryMethodsReturningReceiver(), options);
     this.lambdaRewriter = enableDesugaring ? new LambdaRewriter(this) : null;
     this.interfaceMethodRewriter =
         (enableDesugaring && enableInterfaceMethodDesugaring())

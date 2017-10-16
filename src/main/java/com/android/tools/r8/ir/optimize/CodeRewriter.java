@@ -102,9 +102,12 @@ public class CodeRewriter {
   private final AppInfo appInfo;
   private final DexItemFactory dexItemFactory;
   private final Set<DexMethod> libraryMethodsReturningReceiver;
+  private final InternalOptions options;
 
-  public CodeRewriter(AppInfo appInfo, Set<DexMethod> libraryMethodsReturningReceiver) {
+  public CodeRewriter(
+      AppInfo appInfo, Set<DexMethod> libraryMethodsReturningReceiver, InternalOptions options) {
     this.appInfo = appInfo;
+    this.options = options;
     this.dexItemFactory = appInfo.dexItemFactory;
     this.libraryMethodsReturningReceiver = libraryMethodsReturningReceiver;
   }
@@ -1060,7 +1063,7 @@ public class CodeRewriter {
     return null;
   }
 
-  private boolean isPrimitiveOrStringNewArrayWithPositiveSize(Instruction instruction) {
+  private boolean allowNewFilledArrayConstruction(Instruction instruction) {
     if (!(instruction instanceof NewArrayEmpty)) {
       return false;
     }
@@ -1073,7 +1076,11 @@ public class CodeRewriter {
     if (size < 1) {
       return false;
     }
-    return newArray.type.isPrimitiveArrayType() || newArray.type == dexItemFactory.stringArrayType;
+    if (newArray.type.isPrimitiveArrayType()) {
+      return true;
+    }
+    return newArray.type == dexItemFactory.stringArrayType
+        && options.canUseFilledNewArrayOfObjects();
   }
 
   /**
@@ -1089,7 +1096,7 @@ public class CodeRewriter {
       InstructionListIterator it = block.listIterator();
       while (it.hasNext()) {
         Instruction instruction = it.next();
-        if (!isPrimitiveOrStringNewArrayWithPositiveSize(instruction)) {
+        if (!allowNewFilledArrayConstruction(instruction)) {
           continue;
         }
         NewArrayEmpty newArray = instruction.asNewArrayEmpty();
