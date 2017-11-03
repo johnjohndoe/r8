@@ -137,9 +137,9 @@ public class LinearScanRegisterAllocator implements RegisterAllocator {
   // List of active intervals.
   private List<LiveIntervals> active = new LinkedList<>();
   // List of intervals where the current instruction falls into one of their live range holes.
-  private List<LiveIntervals> inactive = new LinkedList<>();
+  protected List<LiveIntervals> inactive = new LinkedList<>();
   // List of intervals that no register has been allocated to sorted by first live range.
-  private PriorityQueue<LiveIntervals> unhandled =
+  protected PriorityQueue<LiveIntervals> unhandled =
       new PriorityQueue<>(Comparator.comparingInt(LiveIntervals::getStart));
 
   // The first register used for parallel moves. After register allocation the parallel move
@@ -1553,7 +1553,7 @@ public class LinearScanRegisterAllocator implements RegisterAllocator {
     splitOverlappingInactiveIntervals(unhandledInterval, needsRegisterPair, candidate);
   }
 
-  private void splitOverlappingInactiveIntervals(
+  protected void splitOverlappingInactiveIntervals(
       LiveIntervals unhandledInterval,
       boolean needsRegisterPair,
       int candidate) {
@@ -1565,10 +1565,16 @@ public class LinearScanRegisterAllocator implements RegisterAllocator {
           (needsRegisterPair && intervals.usesRegister(candidate + 1))) &&
           intervals.overlaps(unhandledInterval)) {
         if (intervals.isLinked() && !intervals.isArgumentInterval()) {
+          // If the inactive register is linked but not an argument, it needs to get the
+          // same register again at the next use after the start of the unhandled interval.
+          // If there are no such uses, we can use a different register for the remainder
+          // of the inactive interval and therefore do not have to split here.
           int nextUsePosition = intervals.firstUseAfter(unhandledInterval.getStart());
-          LiveIntervals split = intervals.splitBefore(nextUsePosition);
-          split.setRegister(intervals.getRegister());
-          newInactive.add(split);
+          if (nextUsePosition != Integer.MAX_VALUE) {
+            LiveIntervals split = intervals.splitBefore(nextUsePosition);
+            split.setRegister(intervals.getRegister());
+            newInactive.add(split);
+          }
         }
         if (intervals.getStart() > unhandledInterval.getStart()) {
           // The inactive live intervals hasn't started yet. Clear the temporary register
