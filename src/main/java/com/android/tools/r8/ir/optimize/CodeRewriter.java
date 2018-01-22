@@ -1700,8 +1700,6 @@ public class CodeRewriter {
   }
 
   public void simplifyIf(IRCode code) {
-    Supplier<DominatorTree> dominatorTreeMemoization = Suppliers
-        .memoize(() -> new DominatorTree(code));
     int color = code.reserveMarkingColor();
     for (BasicBlock block : code.blocks) {
       if (block.isMarked(color)) {
@@ -1711,7 +1709,7 @@ public class CodeRewriter {
         // First rewrite zero comparison.
         rewriteIfWithConstZero(block);
 
-        if (simplifyKnownBooleanCondition(code, dominatorTreeMemoization, block, color)) {
+        if (simplifyKnownBooleanCondition(code, block, color)) {
           continue;
         }
 
@@ -1757,7 +1755,7 @@ public class CodeRewriter {
         BasicBlock target = theIf.targetFromCondition(cond);
         BasicBlock deadTarget =
             target == theIf.getTrueTarget() ? theIf.fallthroughBlock() : theIf.getTrueTarget();
-        rewriteIfToGoto(dominatorTreeMemoization, block, theIf, target, deadTarget, color);
+        rewriteIfToGoto(code, block, theIf, target, deadTarget, color);
       }
     }
     code.removeMarkedBlocks(color);
@@ -1796,8 +1794,7 @@ public class CodeRewriter {
    * which can be replaced by a fallthrough and the phi value can be replaced
    * by an xor instruction which is smaller.
    */
-  private boolean simplifyKnownBooleanCondition(IRCode code,
-      Supplier<DominatorTree> dominatorTreeMemoization, BasicBlock block, int color) {
+  private boolean simplifyKnownBooleanCondition(IRCode code, BasicBlock block, int color) {
     If theIf = block.exit().asIf();
     Value testValue = theIf.inValues().get(0);
     if (theIf.isZeroTest() && testValue.knownToBeBoolean()) {
@@ -1859,7 +1856,7 @@ public class CodeRewriter {
           // If all phis were removed, there is no need for the diamond shape anymore
           // and it can be rewritten to a goto to one of the branches.
           if (deadPhis == targetBlock.getPhis().size()) {
-            rewriteIfToGoto(dominatorTreeMemoization, block, theIf, trueBlock, falseBlock, color);
+            rewriteIfToGoto(code, block, theIf, trueBlock, falseBlock, color);
             return true;
           }
         }
@@ -1901,9 +1898,10 @@ public class CodeRewriter {
     return false;
   }
 
-  private void rewriteIfToGoto(Supplier<DominatorTree> dominatorTreeMemoization, BasicBlock block,
+  private void rewriteIfToGoto(IRCode code, BasicBlock block,
       If theIf, BasicBlock target, BasicBlock deadTarget, int color) {
-    List<BasicBlock> removedBlocks = block.unlink(deadTarget, dominatorTreeMemoization.get());
+    DominatorTree dominatorTree = new DominatorTree(code);
+    List<BasicBlock> removedBlocks = block.unlink(deadTarget, dominatorTree);
     for (BasicBlock removedBlock : removedBlocks) {
       if (!removedBlock.isMarked(color)) {
         removedBlock.mark(color);
