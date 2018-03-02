@@ -132,7 +132,7 @@ public class MainDexTracingTest {
         EXAMPLE_BUILD_DIR,
         Paths.get(EXAMPLE_SRC_DIR, "multidex006", "main-dex-rules-1.txt"),
         Paths.get(EXAMPLE_SRC_DIR, "multidex006", "ref-list-1.txt"),
-        AndroidApiLevel.I);
+        AndroidApiLevel.I.getLevel());
   }
 
   private void doTest5(int variant) throws Throwable {
