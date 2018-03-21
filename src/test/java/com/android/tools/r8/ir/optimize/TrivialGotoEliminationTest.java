@@ -17,6 +17,7 @@ import com.android.tools.r8.ir.code.Throw;
 import com.android.tools.r8.ir.code.Value;
 import com.android.tools.r8.ir.code.ValueNumberGenerator;
 import com.android.tools.r8.ir.code.ValueType;
+import com.android.tools.r8.utils.InternalOptions;
 import com.google.common.collect.ImmutableList;
 import java.util.LinkedList;
 import org.junit.Test;
@@ -59,7 +60,8 @@ public class TrivialGotoEliminationTest {
     // Check that the goto in block0 remains. There was a bug in the trivial goto elimination
     // that ended up removing that goto changing the code to start with the unreachable
     // throw.
-    IRCode code = new IRCode(null, blocks, new ValueNumberGenerator(), false);
+    IRCode code =
+        new IRCode(new InternalOptions(), null, blocks, new ValueNumberGenerator(), false);
     CodeRewriter.collapsTrivialGotos(null, code);
     assert code.blocks.get(0).isTrivialGoto();
     assert blocks.contains(block0);
@@ -127,7 +129,8 @@ public class TrivialGotoEliminationTest {
     // Check that the goto in block0 remains. There was a bug in the trivial goto elimination
     // that ended up removing that goto changing the code to start with the unreachable
     // throw.
-    IRCode code = new IRCode(null, blocks, new ValueNumberGenerator(), false);
+    IRCode code =
+        new IRCode(new InternalOptions(), null, blocks, new ValueNumberGenerator(), false);
     CodeRewriter.collapsTrivialGotos(null, code);
     assert block0.getInstructions().get(1).isIf();
     assert block0.getInstructions().get(1).asIf().fallthroughBlock() == block1;

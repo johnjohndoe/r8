@@ -123,7 +123,8 @@ public class ConstantRemovalTest {
     LinkedList<BasicBlock> blocks = new LinkedList<>();
     blocks.add(block);
 
-    IRCode code = new IRCode(null, blocks, new ValueNumberGenerator(), false);
+    IRCode code =
+        new IRCode(new InternalOptions(), null, blocks, new ValueNumberGenerator(), false);
     PeepholeOptimizer.optimize(code,
         new MockLinearScanRegisterAllocator(code, new InternalOptions()));
 

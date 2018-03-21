@@ -8,6 +8,7 @@ import com.android.tools.r8.graph.DexEncodedMethod;
 import com.android.tools.r8.graph.DexItemFactory;
 import com.android.tools.r8.graph.DexType;
 import com.android.tools.r8.utils.CfgPrinter;
+import com.android.tools.r8.utils.InternalOptions;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -44,11 +45,15 @@ public class IRCode {
 
   public final boolean hasDebugPositions;
 
+  public final InternalOptions options;
+
   public IRCode(
+      InternalOptions options,
       DexEncodedMethod method,
       LinkedList<BasicBlock> blocks,
       ValueNumberGenerator valueNumberGenerator,
       boolean hasDebugPositions) {
+    this.options = options;
     this.method = method;
     this.blocks = blocks;
     this.valueNumberGenerator = valueNumberGenerator;
