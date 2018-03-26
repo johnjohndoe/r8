@@ -78,6 +78,8 @@ import java.util.stream.Collectors;
  * field descriptions for details.
  */
 public class Enqueuer {
+
+  private final boolean forceProguardCompatibility;
   private boolean tracingMainDex = false;
 
   private final AppInfoWithSubtyping appInfo;
@@ -187,16 +189,19 @@ public class Enqueuer {
    */
   private final ProguardConfiguration.Builder compatibility;
 
-  public Enqueuer(AppInfoWithSubtyping appInfo, InternalOptions options) {
-    this(appInfo, options, null, null);
+  public Enqueuer(AppInfoWithSubtyping appInfo, InternalOptions options,
+      boolean forceProguardCompatibility) {
+    this(appInfo, options, forceProguardCompatibility, null, null);
   }
 
   public Enqueuer(AppInfoWithSubtyping appInfo, InternalOptions options,
+      boolean forceProguardCompatibility,
       ProguardConfiguration.Builder compatibility, ProtoLiteExtension protoLiteExtension) {
     this.appInfo = appInfo;
     this.compatibility = compatibility;
     this.options = options;
     this.protoLiteExtension = protoLiteExtension;
+    this.forceProguardCompatibility = forceProguardCompatibility;
   }
 
   private void enqueueRootItems(Map<DexItem, ProguardKeepRule> items) {
@@ -271,7 +276,7 @@ public class Enqueuer {
 
     @Override
     public boolean registerInvokeStatic(DexMethod method) {
-      if (options.forceProguardCompatibility
+      if (forceProguardCompatibility
           && method == appInfo.dexItemFactory.classMethods.forName) {
         pendingProguardReflectiveCompatibility.add(currentMethod);
       }
@@ -440,7 +445,7 @@ public class Enqueuer {
       enqueueRootItems(rootSet.getDependentStaticMembers(type));
 
       // For Proguard compatibility keep the default initializer for live types.
-      if (options.forceProguardCompatibility) {
+      if (forceProguardCompatibility) {
         if (holder.isProgramClass() && holder.hasDefaultInitializer()) {
           markClassAsInstantiatedWithCompatRule(holder);
         }
@@ -512,7 +517,7 @@ public class Enqueuer {
       Diagnostic message = new StringDiagnostic("Library class " + context.toSourceString()
           + (holder.isInterface() ? " implements " : " extends ")
           + "program class " + type.toSourceString());
-      if (options.forceProguardCompatibility) {
+      if (forceProguardCompatibility) {
         options.reporter.warning(message);
       } else {
         options.reporter.error(message);
@@ -544,7 +549,7 @@ public class Enqueuer {
       Log.verbose(getClass(), "Method `%s` is targeted.", encodedMethod.method);
     }
     targetedMethods.add(encodedMethod, reason);
-    if (options.forceProguardCompatibility) {
+    if (forceProguardCompatibility) {
       // Keep targeted default methods in compatibility mode. The tree pruner will otherwise make
       // these methods abstract, whereas Proguard does not (seem to) touch their code.
       DexClass clazz = appInfo.definitionFor(encodedMethod.method.holder);
@@ -950,15 +955,14 @@ public class Enqueuer {
         reachability, instantiatedTypes.getReasons());
   }
 
-  public Set<DexType> traceMainDex(RootSet rootSet, Timing timing) {
+  public AppInfoWithLiveness traceMainDex(RootSet rootSet, Timing timing) {
     this.tracingMainDex = true;
     this.rootSet = rootSet;
     // Translate the result of root-set computation into enqueuer actions.
     enqueueRootItems(rootSet.noShrinking);
     AppInfoWithLiveness appInfo = trace(timing);
     options.reporter.failIfPendingErrors();
-    // LiveTypes is the result, just make a copy because further work will modify its content.
-    return new HashSet<>(appInfo.liveTypes);
+    return appInfo;
   }
 
   public AppInfoWithLiveness traceApplication(RootSet rootSet, Timing timing) {

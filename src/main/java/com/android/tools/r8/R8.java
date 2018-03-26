@@ -35,6 +35,7 @@ import com.android.tools.r8.shaking.AbstractMethodRemover;
 import com.android.tools.r8.shaking.AnnotationRemover;
 import com.android.tools.r8.shaking.DiscardedChecker;
 import com.android.tools.r8.shaking.Enqueuer;
+import com.android.tools.r8.shaking.Enqueuer.AppInfoWithLiveness;
 import com.android.tools.r8.shaking.MainDexListBuilder;
 import com.android.tools.r8.shaking.ProguardClassFilter;
 import com.android.tools.r8.shaking.ProguardConfiguration;
@@ -272,7 +273,8 @@ public class R8 {
                 .run(executorService);
         ProtoLiteExtension protoLiteExtension =
             options.forceProguardCompatibility ? null : new ProtoLiteExtension(appInfo);
-        appInfo = new Enqueuer(appInfo, options, compatibility, protoLiteExtension)
+        appInfo = new Enqueuer(appInfo, options, options.forceProguardCompatibility,
+            compatibility, protoLiteExtension)
             .traceApplication(rootSet, timing);
         if (options.proguardConfiguration.isPrintSeeds()) {
           ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -378,12 +380,15 @@ public class R8 {
 
       if (!options.mainDexKeepRules.isEmpty()) {
         appInfo = new AppInfoWithSubtyping(application);
-        Enqueuer enqueuer = new Enqueuer(appInfo, options);
+        Enqueuer enqueuer = new Enqueuer(appInfo, options, true);
         // Lets find classes which may have code executed before secondary dex files installation.
         RootSet mainDexRootSet =
             new RootSetBuilder(application, appInfo, options.mainDexKeepRules, options)
                 .run(executorService);
-        Set<DexType> mainDexBaseClasses = enqueuer.traceMainDex(mainDexRootSet, timing);
+        AppInfoWithLiveness mainDexAppInfo = enqueuer.traceMainDex(mainDexRootSet, timing);
+
+        // LiveTypes is the result.
+        Set<DexType> mainDexBaseClasses = new HashSet<>(mainDexAppInfo.liveTypes);
 
         // Calculate the automatic main dex list according to legacy multidex constraints.
         // Add those classes to an eventual manual list of classes.
@@ -397,7 +402,7 @@ public class R8 {
       if (options.useTreeShaking || !options.skipMinification) {
         timing.begin("Post optimization code stripping");
         try {
-          Enqueuer enqueuer = new Enqueuer(appInfo, options);
+          Enqueuer enqueuer = new Enqueuer(appInfo, options, options.forceProguardCompatibility);
           appInfo = enqueuer.traceApplication(rootSet, timing);
           if (options.useTreeShaking) {
             TreePruner pruner = new TreePruner(application, appInfo.withLiveness(), options);
