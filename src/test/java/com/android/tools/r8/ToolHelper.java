@@ -442,6 +442,15 @@ public class ToolHelper {
   private static final String ANGLER_DIR = TOOLS + "/linux/art/product/angler";
   private static final String ANGLER_BOOT_IMAGE = ANGLER_DIR + "/system/framework/boot.art";
 
+  public static byte[] getClassAsBytes(Class clazz) throws IOException {
+    String s = clazz.getSimpleName() + ".class";
+    Class outer = clazz.getEnclosingClass();
+    if (outer != null) {
+      s = outer.getSimpleName() + '$' + s;
+    }
+    return ByteStreams.toByteArray(clazz.getResourceAsStream(s));
+  }
+
   public static String getArtDir(DexVm version) {
     String dir = ART_DIRS.get(version);
     if (dir == null) {
@@ -589,6 +598,10 @@ public class ToolHelper {
         return artVersionEnum;
       }
     }
+  }
+
+  public static int getMinApiLevelForDexVm() {
+    return getMinApiLevelForDexVm(ToolHelper.getDexVm());
   }
 
   public static int getMinApiLevelForDexVm(DexVm dexVm) {

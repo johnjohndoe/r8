@@ -13,6 +13,8 @@ import com.android.tools.r8.shaking.ProguardRuleParserException;
 import com.android.tools.r8.utils.AndroidApiLevel;
 import com.android.tools.r8.utils.AndroidApp;
 import com.android.tools.r8.utils.DescriptorUtils;
+import com.android.tools.r8.utils.InternalOptions;
+import com.android.tools.r8.utils.ZipUtils;
 import com.google.common.io.ByteStreams;
 import java.io.File;
 import java.io.IOException;
@@ -20,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.Assert;
@@ -41,6 +44,21 @@ public class AsmTestBase extends TestBase {
   protected void ensureSameOutput(String main, byte[]... classes) throws Exception {
     AndroidApp app = buildAndroidApp(classes);
     ensureSameOutput(main, app, classes);
+  }
+
+  protected void ensureSameOutput(String main, int apiLevel, byte[]... classes)
+      throws Exception {
+    AndroidApp app = buildAndroidApp(classes);
+    Consumer<InternalOptions> setMinApiLevel = o -> o.minApiLevel = apiLevel;
+    ProcessResult javaResult = runOnJava(main, classes);
+    ProcessResult d8Result = runOnArtRaw(compileWithD8(app, setMinApiLevel), main);
+    ProcessResult r8Result = runOnArtRaw(compileWithR8(app, setMinApiLevel), main);
+    ProcessResult r8ShakenResult = runOnArtRaw(
+        compileWithR8(app, keepMainProguardConfiguration(main) + "-dontobfuscate\n",
+            setMinApiLevel), main);
+    Assert.assertEquals(javaResult.stdout, d8Result.stdout);
+    Assert.assertEquals(javaResult.stdout, r8Result.stdout);
+    Assert.assertEquals(javaResult.stdout, r8ShakenResult.stdout);
   }
 
   private void ensureSameOutput(String main, AndroidApp app, byte[]... classes)
@@ -123,27 +141,27 @@ public class AsmTestBase extends TestBase {
   }
 
   private Path writeToZip(byte[]... classes) throws IOException {
-    NameExtrator nameExtrator = new NameExtrator();
     File result = temp.newFile();
     try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(result.toPath(),
         StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING))) {
       for (byte[] clazz : classes) {
-        String name = nameExtrator.getName(clazz);
-        ZipEntry zipEntry = new ZipEntry(DescriptorUtils.getPathFromJavaType(name));
-        zipEntry.setSize(clazz.length);
-        out.putNextEntry(zipEntry);
-        out.write(clazz);
-        out.closeEntry();
+        String name = loadClassFromDump(clazz).getTypeName();
+        ZipUtils.writeToZipStream(
+            out, DescriptorUtils.getPathFromJavaType(name), clazz);
       }
     }
     return result.toPath();
   }
 
-  private static class NameExtrator extends ClassLoader {
+  private static Class loadClassFromDump(byte[] dump) {
+    return new DumpLoader().loadClass(dump);
+  }
 
-    public String getName(byte[] clazz) {
-      Class loaded = defineClass(clazz, 0, clazz.length);
-      return loaded.getTypeName();
+  private static class DumpLoader extends ClassLoader {
+
+    @SuppressWarnings("deprecation")
+    Class loadClass(byte[] clazz) {
+      return defineClass(clazz, 0, clazz.length);
     }
   }
 }
