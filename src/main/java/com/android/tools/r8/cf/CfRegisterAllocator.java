@@ -99,6 +99,11 @@ public class CfRegisterAllocator implements RegisterAllocator {
   }
 
   @Override
+  public InternalOptions getOptions() {
+    return options;
+  }
+
+  @Override
   public void allocateRegisters(boolean debug) {
     assert options.debug == debug;
     allocateRegisters();
