@@ -49,7 +49,7 @@ public class NullabilityTest extends SmaliTestBase {
     AppInfoWithSubtyping appInfo = new AppInfoWithSubtyping(dexApplication);
     DexInspector dexInspector = new DexInspector(appInfo.app);
     DexEncodedMethod foo = dexInspector.clazz(CLASS_NAME).method(signature).getMethod();
-    IRCode irCode = foo.buildIR(TEST_OPTIONS);
+    IRCode irCode = foo.buildIR(appInfo, TEST_OPTIONS);
     TypeAnalysis analysis = new TypeAnalysis(appInfo, foo, irCode);
     analysis.run();
     inspector.accept(appInfo, analysis);

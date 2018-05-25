@@ -520,7 +520,7 @@ public class IRConverter {
       Log.debug(getClass(), "Original code for %s:\n%s",
           method.toSourceString(), logCode(options, method));
     }
-    IRCode code = method.buildIR(options);
+    IRCode code = method.buildIR(appInfo, options);
     if (code == null) {
       feedback.markProcessed(method, Constraint.NEVER);
       return;

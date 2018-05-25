@@ -8,6 +8,7 @@ import com.android.tools.r8.ApiLevelException;
 import com.android.tools.r8.errors.CompilationError;
 import com.android.tools.r8.errors.InternalCompilerError;
 import com.android.tools.r8.errors.InvalidDebugInfoException;
+import com.android.tools.r8.graph.AppInfo;
 import com.android.tools.r8.graph.DebugLocalInfo;
 import com.android.tools.r8.graph.DexCallSite;
 import com.android.tools.r8.graph.DexEncodedMethod;
@@ -260,18 +261,15 @@ public class IRBuilder {
   private final LinkedList<BasicBlock> blocks = new LinkedList<>();
 
   private BasicBlock currentBlock = null;
-
   private final List<BasicBlock.Pair> needGotoToCatchBlocks = new ArrayList<>();
-
   final private ValueNumberGenerator valueNumberGenerator;
-
   private final DexEncodedMethod method;
+  private final AppInfo appInfo;
 
   // Source code to build IR from. Null if already built.
   private SourceCode source;
 
-  boolean throwingInstructionInCurrentBlock = false;
-
+  private boolean throwingInstructionInCurrentBlock = false;
   private final InternalOptions options;
 
   // Pending local reads.
@@ -280,16 +278,17 @@ public class IRBuilder {
 
   private int nextBlockNumber = 0;
 
-  public IRBuilder(DexEncodedMethod method, SourceCode source, InternalOptions options) {
-    this(method, source, options, new ValueNumberGenerator());
+  public IRBuilder(DexEncodedMethod method, AppInfo appInfo,
+      SourceCode source, InternalOptions options) {
+    this(method, appInfo, source, options, new ValueNumberGenerator());
   }
 
   public IRBuilder(
-      DexEncodedMethod method,
-      SourceCode source,
+      DexEncodedMethod method, AppInfo appInfo, SourceCode source,
       InternalOptions options, ValueNumberGenerator valueNumberGenerator) {
     assert source != null;
     this.method = method;
+    this.appInfo = appInfo;
     this.source = source;
     this.valueNumberGenerator = valueNumberGenerator;
     this.options = options;
@@ -1007,7 +1006,7 @@ public class IRBuilder {
 
   public void addInvoke(Type type, DexItem item, DexProto callSiteProto, List<Value> arguments)
       throws ApiLevelException {
-    if (type == Invoke.Type.POLYMORPHIC) {
+    if (type == Type.POLYMORPHIC) {
       assert item instanceof DexMethod;
       if (!options.canUseInvokePolymorphic()) {
         throw new ApiLevelException(
@@ -1020,6 +1019,19 @@ public class IRBuilder {
             AndroidApiLevel.P,
             "Call to polymorphic signature of VarHandle",
             null /* sourceString */);
+      }
+    }
+    if (appInfo != null && type == Type.VIRTUAL) {
+      // If an invoke-virtual targets a private method in the current class overriding will
+      // not apply (see jvm spec on method resolution 5.4.3.3 and overriding 5.4.5) and
+      // therefore we use an invoke-direct instead. We need to do this as the Android Runtime
+      // will not allow invoke-virtual of a private method.
+      DexMethod invocationMethod = (DexMethod) item;
+      if (invocationMethod.holder == method.method.holder) {
+        DexEncodedMethod directTarget = appInfo.lookupDirectTarget(invocationMethod);
+        if (directTarget != null && invocationMethod.holder == directTarget.method.holder) {
+          type = Type.DIRECT;
+        }
       }
     }
     add(Invoke.create(type, item, callSiteProto, null, arguments));

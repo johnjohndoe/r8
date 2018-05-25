@@ -217,20 +217,24 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
     compilationState = CompilationState.NOT_PROCESSED;
   }
 
-  public IRCode buildIR(InternalOptions options) throws ApiLevelException {
-    return code == null ? null : code.buildIR(this, options);
+  public IRCode buildIR(AppInfo appInfo, InternalOptions options) throws ApiLevelException {
+    return code == null ? null : code.buildIR(this, appInfo, options);
   }
 
   public IRCode buildInliningIRForTesting(
       InternalOptions options, ValueNumberGenerator valueNumberGenerator)
       throws ApiLevelException {
-    return buildInliningIR(options, valueNumberGenerator, null);
+    return buildInliningIR(null, options, valueNumberGenerator, null);
   }
 
   public IRCode buildInliningIR(
-      InternalOptions options, ValueNumberGenerator valueNumberGenerator, Position callerPosition)
+      AppInfo appInfo,
+      InternalOptions options,
+      ValueNumberGenerator valueNumberGenerator,
+      Position callerPosition)
       throws ApiLevelException {
-    return code.buildInliningIR(this, options, valueNumberGenerator, callerPosition);
+    return code.buildInliningIR(
+        this, appInfo, options, valueNumberGenerator, callerPosition);
   }
 
   public void setCode(Code code) {

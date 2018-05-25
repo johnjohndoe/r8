@@ -239,10 +239,10 @@ public class Inliner {
         Position callerPosition)
         throws ApiLevelException {
       if (target.isProcessed()) {
-        return target.buildInliningIR(options, generator, callerPosition);
+        return target.buildInliningIR(appInfo, options, generator, callerPosition);
       } else {
         // Build the IR for a yet not processed method, and perform minimal IR processing.
-        IRCode code = target.buildInliningIR(options, generator, callerPosition);
+        IRCode code = target.buildInliningIR(appInfo, options, generator, callerPosition);
         new LensCodeRewriter(graphLense, appInfo).rewrite(code, target);
         return code;
       }

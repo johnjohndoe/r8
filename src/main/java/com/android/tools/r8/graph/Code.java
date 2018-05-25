@@ -17,11 +17,15 @@ import java.util.function.Consumer;
 
 public abstract class Code extends CachedHashValueDexItem {
 
-  public abstract IRCode buildIR(DexEncodedMethod encodedMethod, InternalOptions options)
+  public abstract IRCode buildIR(
+      DexEncodedMethod encodedMethod,
+      AppInfo appInfo,
+      InternalOptions options)
       throws ApiLevelException;
 
   public IRCode buildInliningIR(
       DexEncodedMethod encodedMethod,
+      AppInfo appInfo,
       InternalOptions options,
       ValueNumberGenerator valueNumberGenerator,
       Position callerPosition)

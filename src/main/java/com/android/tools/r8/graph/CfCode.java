@@ -149,7 +149,7 @@ public class CfCode extends Code {
   }
 
   @Override
-  public IRCode buildIR(DexEncodedMethod encodedMethod, InternalOptions options)
+  public IRCode buildIR(DexEncodedMethod encodedMethod, AppInfo info, InternalOptions options)
       throws ApiLevelException {
     throw new Unimplemented("Converting Java class- file bytecode to IR not yet supported");
   }

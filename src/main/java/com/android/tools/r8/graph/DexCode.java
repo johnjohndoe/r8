@@ -163,19 +163,20 @@ public class DexCode extends Code {
   }
 
   @Override
-  public IRCode buildIR(DexEncodedMethod encodedMethod, InternalOptions options)
+  public IRCode buildIR(DexEncodedMethod encodedMethod, AppInfo appInfo,
+      InternalOptions options)
       throws ApiLevelException {
     DexSourceCode source =
         new DexSourceCode(
             this, encodedMethod, null, options.lineNumberOptimization == LineNumberOptimization.ON);
-    IRBuilder builder = new IRBuilder(encodedMethod, source, options);
+    IRBuilder builder = new IRBuilder(encodedMethod, appInfo, source, options);
     return builder.build();
   }
 
   @Override
   public IRCode buildInliningIR(
       DexEncodedMethod encodedMethod,
-      InternalOptions options,
+      AppInfo appInfo, InternalOptions options,
       ValueNumberGenerator valueNumberGenerator,
       Position callerPosition)
       throws ApiLevelException {
@@ -185,7 +186,8 @@ public class DexCode extends Code {
             encodedMethod,
             callerPosition,
             options.lineNumberOptimization == LineNumberOptimization.ON);
-    IRBuilder builder = new IRBuilder(encodedMethod, source, options, valueNumberGenerator);
+    IRBuilder builder =
+        new IRBuilder(encodedMethod, appInfo, source, options, valueNumberGenerator);
     return builder.build();
   }
 
