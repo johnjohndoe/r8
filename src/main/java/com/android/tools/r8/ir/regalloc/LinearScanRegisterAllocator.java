@@ -782,11 +782,8 @@ public class LinearScanRegisterAllocator implements RegisterAllocator {
       if (overlappingMoveExceptionIntervals) {
         for (LiveIntervals intervals : moveExceptionIntervals) {
           if (intervals.getUses().size() > 1) {
-            LiveIntervalsUse firstUse = intervals.getUses().pollFirst();
-            LiveIntervalsUse secondUse = intervals.getUses().pollFirst();
-            intervals.getUses().add(firstUse);
-            intervals.getUses().add(secondUse);
-            LiveIntervals split = intervals.splitBefore(secondUse.getPosition());
+            LiveIntervals split =
+                intervals.splitBefore(intervals.getFirstUse() + INSTRUCTION_NUMBER_DELTA);
             unhandled.add(split);
           }
         }
