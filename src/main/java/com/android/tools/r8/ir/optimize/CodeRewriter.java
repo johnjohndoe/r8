@@ -1376,10 +1376,8 @@ public class CodeRewriter {
           return values;
         }
       }
-      block =
-          block.exit().isGoto() && !visitedBlocks.contains(block.exit().asGoto().getTarget())
-              ? block.exit().asGoto().getTarget()
-              : null;
+      BasicBlock nextBlock = block.exit().isGoto() ? block.exit().asGoto().getTarget() : null;
+      block = nextBlock != null && !visitedBlocks.contains(nextBlock) ? nextBlock : null;
       it = block != null ? block.listIterator() : null;
     } while (it != null);
     return null;
@@ -1470,7 +1468,9 @@ public class CodeRewriter {
       // Second pass: remove all the array put instructions for the array for which we have
       // inserted a fill array data instruction instead.
       if (!storesToRemoveForArray.isEmpty()) {
+        Set<BasicBlock> visitedBlocks = Sets.newIdentityHashSet();
         do {
+          visitedBlocks.add(block);
           it = block.listIterator();
           while (it.hasNext()) {
             Instruction instruction = it.next();
@@ -1492,7 +1492,8 @@ public class CodeRewriter {
               }
             }
           }
-          block = block.exit().isGoto() ? block.exit().asGoto().getTarget() : null;
+          BasicBlock nextBlock = block.exit().isGoto() ? block.exit().asGoto().getTarget() : null;
+          block = nextBlock != null && !visitedBlocks.contains(nextBlock) ? nextBlock : null;
         } while (block != null);
       }
     }
