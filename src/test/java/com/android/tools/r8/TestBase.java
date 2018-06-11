@@ -28,6 +28,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -141,7 +142,7 @@ public class TestBase {
    */
   protected Set<String> readClassesInJar(Path jar) throws IOException {
     Set<String> result = new HashSet<>();
-    try (ZipFile zipFile = new ZipFile(jar.toFile())) {
+    try (ZipFile zipFile = new ZipFile(jar.toFile(), StandardCharsets.UTF_8)) {
       final Enumeration<? extends ZipEntry> entries = zipFile.entries();
       while (entries.hasMoreElements()) {
         ZipEntry entry = entries.nextElement();

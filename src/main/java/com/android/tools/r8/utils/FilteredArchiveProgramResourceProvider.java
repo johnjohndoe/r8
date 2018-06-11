@@ -19,6 +19,7 @@ import com.android.tools.r8.shaking.FilteredClassPath;
 import com.google.common.io.ByteStreams;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -46,7 +47,7 @@ public class FilteredArchiveProgramResourceProvider implements ProgramResourcePr
     assert isArchive(archive.getPath());
     List<ProgramResource> dexResources = new ArrayList<>();
     List<ProgramResource> classResources = new ArrayList<>();
-    try (ZipFile zipFile = new ZipFile(archive.getPath().toFile())) {
+    try (ZipFile zipFile = new ZipFile(archive.getPath().toFile(), StandardCharsets.UTF_8)) {
       final Enumeration<? extends ZipEntry> entries = zipFile.entries();
       while (entries.hasMoreElements()) {
         ZipEntry entry = entries.nextElement();

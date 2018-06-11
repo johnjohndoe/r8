@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.io.ByteStreams;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -252,7 +253,7 @@ public abstract class RunExamplesAndroidPTest
 
   protected DexInspector getMainDexInspector(Path zip)
       throws ZipException, IOException, ExecutionException {
-    try (ZipFile zipFile = new ZipFile(zip.toFile())) {
+    try (ZipFile zipFile = new ZipFile(zip.toFile(), StandardCharsets.UTF_8)) {
       try (InputStream in =
           zipFile.getInputStream(zipFile.getEntry(ToolHelper.DEFAULT_DEX_FILENAME))) {
         return new DexInspector(
