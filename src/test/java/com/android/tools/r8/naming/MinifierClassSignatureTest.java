@@ -424,10 +424,50 @@ public class MinifierClassSignatureTest extends TestBase {
 
   @Test
   public void classSignatureOuter_classNotFound() throws Exception {
-    String signature = "<T:LNotFound;>LNotFound;";
+    String signature = "<T:LNotFound;>LAlsoNotFound;";
     testSingleClass("Outer", signature, this::noWarnings, inspector -> {
       assertThat(inspector.clazz("NotFound"), not(isPresent()));
       ClassSubject outer = inspector.clazz("Outer");
+      assertEquals(signature, outer.getOriginalSignatureAttribute());
+    });
+  }
+
+  @Test
+  public void classSignatureExtendsInner_innerClassNotFound() throws Exception {
+    String signature = "LOuter<TT;>.NotFound;";
+    testSingleClass("Outer$ExtendsInner", signature, this::noWarnings, inspector -> {
+      assertThat(inspector.clazz("NotFound"), not(isPresent()));
+      ClassSubject outer = inspector.clazz("Outer$ExtendsInner");
+      assertEquals(signature, outer.getOriginalSignatureAttribute());
+    });
+  }
+
+  @Test
+  public void classSignatureExtendsInner_outerAndInnerClassNotFound() throws Exception {
+    String signature = "LNotFound<TT;>.AlsoNotFound;";
+    testSingleClass("Outer$ExtendsInner", signature, this::noWarnings, inspector -> {
+      assertThat(inspector.clazz("NotFound"), not(isPresent()));
+      ClassSubject outer = inspector.clazz("Outer$ExtendsInner");
+      assertEquals(signature, outer.getOriginalSignatureAttribute());
+    });
+  }
+
+  @Test
+  public void classSignatureExtendsInner_nestedInnerClassNotFound() throws Exception {
+    String signature = "LOuter<TT;>.Inner.NotFound;";
+    testSingleClass("Outer$ExtendsInner", signature, this::noWarnings, inspector -> {
+      assertThat(inspector.clazz("NotFound"), not(isPresent()));
+      ClassSubject outer = inspector.clazz("Outer$ExtendsInner");
+      assertEquals(signature, outer.getOriginalSignatureAttribute());
+    });
+  }
+
+  @Test
+  public void classSignatureExtendsInner_multipleMestedInnerClassesNotFound() throws Exception {
+    String signature = "LOuter<TT;>.NotFound.AlsoNotFound;";
+    testSingleClass("Outer$ExtendsInner", signature, this::noWarnings, inspector -> {
+      assertThat(inspector.clazz("NotFound"), not(isPresent()));
+      ClassSubject outer = inspector.clazz("Outer$ExtendsInner");
       assertEquals(signature, outer.getOriginalSignatureAttribute());
     });
   }
@@ -437,7 +477,7 @@ public class MinifierClassSignatureTest extends TestBase {
     testSingleClass("Outer", "X", diagnostics -> {
       assertEquals(1, diagnostics.warnings.size());
       DiagnosticsChecker.checkDiagnostic(diagnostics.warnings.get(0), this::isOriginUnknown,
-          "Invalid class signature for class Outer", "Expected L at position 1");
+          "Invalid signature for class Outer", "Expected L at position 1");
     }, inspector -> noSignatureAttribute(inspector.clazz("Outer")));
   }
 
@@ -446,7 +486,7 @@ public class MinifierClassSignatureTest extends TestBase {
     testSingleClass("Outer", "<L", diagnostics -> {
       assertEquals(1, diagnostics.warnings.size());
       DiagnosticsChecker.checkDiagnostic(diagnostics.warnings.get(0), this::isOriginUnknown,
-          "Invalid class signature for class Outer", "Unexpected end of signature at position 3");
+          "Invalid signature for class Outer", "Unexpected end of signature at position 3");
     }, inspector -> noSignatureAttribute(inspector.clazz("Outer")));
   }
 
@@ -455,7 +495,7 @@ public class MinifierClassSignatureTest extends TestBase {
     testSingleClass("Outer$ExtendsInner", "X", diagnostics -> {
       assertEquals(1, diagnostics.warnings.size());
       DiagnosticsChecker.checkDiagnostic(diagnostics.warnings.get(0), this::isOriginUnknown,
-          "Invalid class signature for class Outer$ExtendsInner", "Expected L at position 1");
+          "Invalid signature for class Outer$ExtendsInner", "Expected L at position 1");
     }, inspector -> noSignatureAttribute(inspector.clazz("Outer$ExtendsInner")));
   }
 
@@ -464,7 +504,7 @@ public class MinifierClassSignatureTest extends TestBase {
     testSingleClass("Outer$Inner$ExtendsInnerInner", "X", diagnostics -> {
       assertEquals(1, diagnostics.warnings.size());
       DiagnosticsChecker.checkDiagnostic(diagnostics.warnings.get(0), this::isOriginUnknown,
-          "Invalid class signature for class Outer$Inner$ExtendsInnerInner",
+          "Invalid signature for class Outer$Inner$ExtendsInnerInner",
           "Expected L at position 1");
     }, inspector -> noSignatureAttribute(inspector.clazz("Outer$Inner$ExtendsInnerInner")));
   }
@@ -488,7 +528,7 @@ public class MinifierClassSignatureTest extends TestBase {
     testSingleClass("Outer$ExtendsInner", signature, diagnostics -> {
       assertEquals(1, diagnostics.warnings.size());
       DiagnosticsChecker.checkDiagnostic(diagnostics.warnings.get(0), this::isOriginUnknown,
-          "Invalid class signature for class Outer$ExtendsInner", "Expected ; at position 16");
+          "Invalid signature for class Outer$ExtendsInner", "Expected ; at position 16");
     }, inspector -> {
       noSignatureAttribute(inspector.clazz("Outer$ExtendsInner"));
     });

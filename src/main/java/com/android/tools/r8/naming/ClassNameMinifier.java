@@ -161,7 +161,7 @@ class ClassNameMinifier {
   }
 
   private void parseError(DexItem item, Origin origin, GenericSignatureFormatError e) {
-    StringBuilder message = new StringBuilder("Invalid class signature for ");
+    StringBuilder message = new StringBuilder("Invalid signature for ");
     if (item instanceof DexClass) {
       message.append("class ");
       message.append(((DexClass) item).getType().toSourceString());
@@ -183,12 +183,14 @@ class ClassNameMinifier {
       clazz.annotations = rewriteGenericSignatures(clazz.annotations,
           genericSignatureParser::parseClassSignature,
           e -> parseError(clazz, clazz.getOrigin(), e));
-      clazz.forEachField(field -> rewriteGenericSignatures(
-          field.annotations, genericSignatureParser::parseFieldSignature,
-          e -> parseError(field, clazz.getOrigin(), e)));
-      clazz.forEachMethod(method -> rewriteGenericSignatures(
-          method.annotations, genericSignatureParser::parseMethodSignature,
-          e -> parseError(method, clazz.getOrigin(), e)));
+      clazz.forEachField(field ->
+          field.annotations = rewriteGenericSignatures(
+              field.annotations, genericSignatureParser::parseFieldSignature,
+              e -> parseError(field, clazz.getOrigin(), e)));
+      clazz.forEachMethod(method ->
+        method.annotations = rewriteGenericSignatures(
+            method.annotations, genericSignatureParser::parseMethodSignature,
+            e -> parseError(method, clazz.getOrigin(), e)));
     }
   }
 
@@ -506,11 +508,18 @@ class ClassNameMinifier {
       String enclosingRenamedBinaryName =
           getClassBinaryNameFromDescriptor(
               renaming.getOrDefault(enclosingType, enclosingType.descriptor).toString());
-      String renamed =
-          getClassBinaryNameFromDescriptor(
-              renaming.getOrDefault(type, type.descriptor).toString());
-      String outName = renamed.substring(enclosingRenamedBinaryName.length() + 1);
-      renamedSignature.append(outName);
+      DexString renamedDescriptor = renaming.get(type);
+      if (renamedDescriptor != null) {
+        // Pick the renamed inner class from the fully renamed binary name.
+        String fullRenamedBinaryName =
+            getClassBinaryNameFromDescriptor(renamedDescriptor.toString());
+        renamedSignature.append(
+            fullRenamedBinaryName.substring(enclosingRenamedBinaryName.length() + 1));
+      } else {
+        // Did not find the class - keep the inner class name as is.
+        // TODO(110085899): Warn about missing classes in signatures?
+        renamedSignature.append(name);
+      }
       return type;
     }
 
