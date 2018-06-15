@@ -46,14 +46,14 @@ public class FilteredClassPath {
     return path;
   }
 
-  public boolean matchesFile(Path file) {
+  public boolean matchesFile(String name) {
     if (isUnfiltered()) {
       return true;
     }
     boolean isNegated = false;
     for (String pattern : pattern) {
       isNegated = pattern.charAt(0) == '!';
-      boolean matches = matchAgainstFileName(file.toString(), 0, pattern, isNegated ? 1 : 0);
+      boolean matches = matchAgainstFileName(name, 0, pattern, isNegated ? 1 : 0);
       if (matches) {
         return !isNegated;
       }
@@ -63,7 +63,7 @@ public class FilteredClassPath {
   }
 
   private boolean containsFileSeparator(String string) {
-    return string.indexOf(File.separatorChar) != -1;
+    return string.indexOf('/') != -1;
   }
 
   private boolean matchAgainstFileName(String fileName, int namePos, String pattern,
@@ -95,7 +95,7 @@ public class FilteredClassPath {
         }
       } else {
         for (int i = namePos; i < fileName.length(); i++) {
-          if (!includeFileSeparators && fileName.charAt(i) == File.separatorChar) {
+          if (!includeFileSeparators && fileName.charAt(i) == '/') {
             return false;
           }
           if (matchAgainstFileName(fileName, i, pattern, patternPos + 1)) {
