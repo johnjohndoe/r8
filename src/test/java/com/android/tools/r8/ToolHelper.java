@@ -807,7 +807,9 @@ public class ToolHelper {
 
   public static R8Command.Builder prepareR8CommandBuilder(
       AndroidApp app, ProgramConsumer programConsumer) {
-    return R8Command.builder(app).setProgramConsumer(programConsumer);
+    return R8Command.builder(app)
+        .setProgramConsumer(programConsumer)
+        .setProguardMapConsumer(StringConsumer.emptyConsumer());
   }
 
   public static AndroidApp runR8(AndroidApp app) throws IOException {
@@ -1411,6 +1413,11 @@ public class ToolHelper {
       fail("Proguard failed, exit code " + result.exitCode + ", stderr:\n" + result.stderr);
     }
     return result.stdout;
+  }
+
+  public static ProcessResult runProguardRaw(
+      Path inJar, Path outJar, Path lib, Path config, Path map) throws IOException {
+    return runProguardRaw(getProguardScript(), inJar, outJar, lib, ImmutableList.of(config), map);
   }
 
   public static ProcessResult runProguardRaw(Path inJar, Path outJar, List<Path> config, Path map)
