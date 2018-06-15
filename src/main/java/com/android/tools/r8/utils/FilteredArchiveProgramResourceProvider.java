@@ -4,8 +4,6 @@
 package com.android.tools.r8.utils;
 
 import static com.android.tools.r8.utils.FileUtils.isArchive;
-import static com.android.tools.r8.utils.FileUtils.isClassFile;
-import static com.android.tools.r8.utils.FileUtils.isDexFile;
 
 import com.android.tools.r8.ProgramResource;
 import com.android.tools.r8.ProgramResource.Kind;
@@ -20,8 +18,6 @@ import com.google.common.io.ByteStreams;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -52,17 +48,17 @@ public class FilteredArchiveProgramResourceProvider implements ProgramResourcePr
       while (entries.hasMoreElements()) {
         ZipEntry entry = entries.nextElement();
         try (InputStream stream = zipFile.getInputStream(entry)) {
-          Path name = Paths.get(entry.getName());
-          Origin entryOrigin = new ArchiveEntryOrigin(entry.getName(), origin);
+          String name = entry.getName();
+          Origin entryOrigin = new ArchiveEntryOrigin(name, origin);
           if (archive.matchesFile(name)) {
-            if (isDexFile(name)) {
+            if (ZipUtils.isDexFile(name)) {
               if (!ignoreDexInArchive) {
                 ProgramResource resource =
                     OneShotByteResource.create(
                         Kind.DEX, entryOrigin, ByteStreams.toByteArray(stream), null);
                 dexResources.add(resource);
               }
-            } else if (isClassFile(name)) {
+            } else if (ZipUtils.isClassFile(name)) {
               String descriptor = DescriptorUtils.guessTypeDescriptor(name);
               ProgramResource resource =
                   OneShotByteResource.create(
