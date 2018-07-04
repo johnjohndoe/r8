@@ -759,6 +759,10 @@ public class IRConverter {
     // Analysis must be done after method is rewritten by logArgumentTypes()
     codeRewriter.identifyClassInlinerEligibility(method, code, feedback);
 
+    if (options.canHaveNumberConversionRegisterAllocationBug()) {
+      codeRewriter.workaroundNumberConversionRegisterAllocationBug(code);
+    }
+
     printMethod(code, "Optimized IR (SSA)");
     finalizeIR(method, code, feedback);
   }
