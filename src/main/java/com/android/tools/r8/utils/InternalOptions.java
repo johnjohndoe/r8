@@ -462,7 +462,7 @@ public class InternalOptions {
   //
   // See b/69364976 and b/77996377.
   public boolean canHaveBoundsCheckEliminationBug() {
-    return minApiLevel <= AndroidApiLevel.L.getLevel();
+    return minApiLevel < AndroidApiLevel.M.getLevel();
   }
 
   // MediaTek JIT compilers for KitKat phones did not implement the not
