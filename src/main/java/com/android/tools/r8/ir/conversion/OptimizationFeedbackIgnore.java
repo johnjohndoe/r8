@@ -35,4 +35,8 @@ public class OptimizationFeedbackIgnore implements OptimizationFeedback {
   public void setClassInlinerEligibility(
       DexEncodedMethod method, ClassInlinerEligibility eligibility) {
   }
+
+  @Override
+  public void setInitializerEnablingJavaAssertions(DexEncodedMethod method) {
+  }
 }

@@ -17,4 +17,5 @@ public interface OptimizationFeedback {
   void markCheckNullReceiverBeforeAnySideEffect(DexEncodedMethod method, boolean mark);
   void markTriggerClassInitBeforeAnySideEffect(DexEncodedMethod method, boolean mark);
   void setClassInlinerEligibility(DexEncodedMethod method, ClassInlinerEligibility eligibility);
+  void setInitializerEnablingJavaAssertions(DexEncodedMethod method);
 }

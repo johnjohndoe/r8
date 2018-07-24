@@ -601,6 +601,7 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
     // Stores information about instance methods and constructors for
     // class inliner, null value indicates that the method is not eligible.
     private ClassInlinerEligibility classInlinerEligibility = null;
+    private boolean initializerEnablingJavaAssertions = false;
 
     private OptimizationInfo() {
       // Intentionally left empty.
@@ -643,6 +644,14 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
 
     public ClassInlinerEligibility getClassInlinerEligibility() {
       return this.classInlinerEligibility;
+    }
+
+    private void setInitializerEnablingJavaAssertions() {
+      this.initializerEnablingJavaAssertions = true;
+    }
+
+    public boolean isInitializerEnablingJavaAssertions() {
+      return initializerEnablingJavaAssertions;
     }
 
     public long getReturnedConstant() {
@@ -745,6 +754,10 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
 
   synchronized public void setClassInlinerEligibility(ClassInlinerEligibility eligibility) {
     ensureMutableOI().setClassInlinerEligibility(eligibility);
+  }
+
+  synchronized public void setInitializerEnablingJavaAssertions() {
+    ensureMutableOI().setInitializerEnablingJavaAssertions();
   }
 
   synchronized public void markForceInline() {
