@@ -63,6 +63,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.junit.Assume;
 import org.junit.rules.TemporaryFolder;
@@ -747,9 +748,17 @@ public class ToolHelper {
   }
 
   public static List<Path> getClassFilesForTestPackage(Package pkg) throws IOException {
-    Path dir = ToolHelper.getPackageDirectoryForTestPackage(pkg);
-    return Files.walk(dir)
-        .filter(path -> path.toString().endsWith(".class"))
+    return getClassFilesForTestDirectory(ToolHelper.getPackageDirectoryForTestPackage(pkg));
+  }
+
+  public static List<Path> getClassFilesForTestDirectory(Path directory) throws IOException {
+    return getClassFilesForTestDirectory(directory, null);
+  }
+
+  public static List<Path> getClassFilesForTestDirectory(
+      Path directory, Predicate<Path> filter) throws IOException {
+    return Files.walk(directory)
+        .filter(path -> path.toString().endsWith(".class") && (filter == null || filter.test(path)))
         .collect(Collectors.toList());
   }
 
