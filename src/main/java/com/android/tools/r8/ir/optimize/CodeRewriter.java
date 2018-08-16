@@ -1791,7 +1791,9 @@ public class CodeRewriter {
           return null;
         }
         int index = arrayPut.index().getConstInstruction().asConstNumber().getIntValue();
-        assert index >= 0 && index < values.length;
+        if (index < 0 || index >= values.length) {
+          return null;
+        }
         if (values[index] != null) {
           return null;
         }
