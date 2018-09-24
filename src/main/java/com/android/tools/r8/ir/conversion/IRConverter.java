@@ -841,6 +841,9 @@ public class IRConverter {
     workaroundForwardingInitializerBug(code);
     LinearScanRegisterAllocator registerAllocator = new LinearScanRegisterAllocator(code, options);
     registerAllocator.allocateRegisters(options.debug);
+    if (options.canHaveExceptionTargetingLoopHeaderBug()) {
+      codeRewriter.workaroundExceptionTargetingLoopHeaderBug(code);
+    }
     printMethod(code, "After register allocation (non-SSA)");
     for (int i = 0; i < PEEPHOLE_OPTIMIZATION_PASSES; i++) {
       CodeRewriter.collapsTrivialGotos(method, code);

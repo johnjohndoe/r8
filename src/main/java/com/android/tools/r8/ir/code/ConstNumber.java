@@ -114,7 +114,7 @@ public class ConstNumber extends ConstInstruction {
   public void buildDex(DexBuilder builder) {
     if (!dest().needsRegister()) {
       forceSetPosition(Position.none());
-      builder.addNop(this);
+      builder.addNothing(this);
       return;
     }
 
