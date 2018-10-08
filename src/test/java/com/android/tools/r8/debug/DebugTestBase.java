@@ -296,6 +296,12 @@ public abstract class DebugTestBase {
     return new JUnit3Wrapper.Command.BreakpointCommand(className, methodName, methodSignature, line);
   }
 
+  protected final JUnit3Wrapper.Command breakOnException(String className, String methodName,
+      boolean caught, boolean uncaught) {
+    return new JUnit3Wrapper.Command.BreakOnExceptionCommand(
+        className, methodName, caught, uncaught);
+  }
+
   protected final JUnit3Wrapper.Command stepOver() {
     return stepOver(DEFAULT_FILTER);
   }
@@ -1555,6 +1561,39 @@ public abstract class DebugTestBase {
         }
       }
 
+      // Break on exceptions thrown in className.methodName.
+      class BreakOnExceptionCommand implements Command {
+        private static final int ALL_EXCEPTIONS = 0;
+        private final String className;
+        private final String methodName;
+        private final boolean caught;
+        private final boolean uncaught;
+
+        public BreakOnExceptionCommand(
+            String className, String methodName, boolean caught, boolean uncaught) {
+          this.className = className;
+          this.methodName = methodName;
+          this.caught = caught;
+          this.uncaught = uncaught;
+        }
+
+        @Override
+        public void perform(JUnit3Wrapper testBase) {
+          ReplyPacket replyPacket =
+              testBase.getMirror().setException(ALL_EXCEPTIONS, caught, uncaught);
+          assert replyPacket.getErrorCode() == Error.NONE;
+          int breakpointId = replyPacket.getNextValueAsInt();
+          testBase.events.put(
+              Integer.valueOf(breakpointId),
+              new BreakOnExceptionHandler(className, methodName));
+        }
+
+        @Override
+        public String toString() {
+          return "breakOnException";
+        }
+      }
+
       class BreakpointCommand implements Command {
 
         private final String className;
@@ -1757,6 +1796,29 @@ public abstract class DebugTestBase {
 
       @Override
       public void handle(JUnit3Wrapper testBase) {
+        testBase.setState(State.ProcessCommand);
+      }
+    }
+
+    private static class BreakOnExceptionHandler extends DefaultEventHandler {
+      private final String className;
+      private final String methodName;
+
+      BreakOnExceptionHandler(String className, String methodName) {
+        this.className = className;
+        this.methodName = methodName;
+      }
+
+      @Override
+      public void handle(JUnit3Wrapper testBase) {
+        boolean inMethod =
+            testBase.getDebuggeeState().getTopFrame().getMethodName().equals(methodName);
+        boolean inClass =
+            testBase.getDebuggeeState().getTopFrame().getClassName().equals(className);
+        if (!(inClass && inMethod)) {
+          // Not the right place, continue until the next exception.
+          testBase.enqueueCommandFirst(new JUnit3Wrapper.Command.RunCommand());
+        }
         testBase.setState(State.ProcessCommand);
       }
     }
