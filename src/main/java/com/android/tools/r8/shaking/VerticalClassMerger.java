@@ -1495,12 +1495,13 @@ public class VerticalClassMerger {
       result = 0;
       int bitsUsed = 0;
       int accumulator = 0;
-      for (DexType aType : proto.parameters.values) {
+      for (DexType parameterType : proto.parameters.values) {
+        DexType parameterBaseType = parameterType.toBaseType(appInfo.dexItemFactory);
         // Substitute the type with the already merged class to estimate what it will look like.
-        aType = mergedClasses.getOrDefault(aType, aType);
+        DexType mappedType = mergedClasses.getOrDefault(parameterBaseType, parameterBaseType);
         accumulator <<= 1;
         bitsUsed++;
-        if (aType == type) {
+        if (mappedType == type) {
           accumulator |= 1;
         }
         // Handle overflow on 31 bit boundary.
@@ -1511,9 +1512,10 @@ public class VerticalClassMerger {
         }
       }
       // We also take the return type into account for potential conflicts.
-      DexType returnType = mergedClasses.getOrDefault(proto.returnType, proto.returnType);
+      DexType returnBaseType = proto.returnType.toBaseType(appInfo.dexItemFactory);
+      DexType mappedReturnType = mergedClasses.getOrDefault(returnBaseType, returnBaseType);
       accumulator <<= 1;
-      if (returnType == type) {
+      if (mappedReturnType == type) {
         accumulator |= 1;
       }
       result |= accumulator;
@@ -1628,7 +1630,8 @@ public class VerticalClassMerger {
 
     private boolean checkFieldReference(DexField field) {
       if (!foundIllegalAccess) {
-        if (field.clazz.isSamePackage(source.type)) {
+        DexType baseType = field.clazz.toBaseType(appInfo.dexItemFactory);
+        if (baseType.isClassType() && baseType.isSamePackage(source.type)) {
           checkTypeReference(field.clazz);
           checkTypeReference(field.type);
 
@@ -1643,7 +1646,8 @@ public class VerticalClassMerger {
 
     private boolean checkMethodReference(DexMethod method) {
       if (!foundIllegalAccess) {
-        if (method.holder.isSamePackage(source.type)) {
+        DexType baseType = method.holder.toBaseType(appInfo.dexItemFactory);
+        if (baseType.isClassType() && baseType.isSamePackage(source.type)) {
           checkTypeReference(method.holder);
           checkTypeReference(method.proto.returnType);
           for (DexType type : method.proto.parameters.values) {
@@ -1660,8 +1664,9 @@ public class VerticalClassMerger {
 
     private boolean checkTypeReference(DexType type) {
       if (!foundIllegalAccess) {
-        if (type.isClassType() && type.isSamePackage(source.type)) {
-          DexClass clazz = appInfo.definitionFor(type);
+        DexType baseType = type.toBaseType(appInfo.dexItemFactory);
+        if (baseType.isClassType() && baseType.isSamePackage(source.type)) {
+          DexClass clazz = appInfo.definitionFor(baseType);
           if (clazz == null || !clazz.accessFlags.isPublic()) {
             foundIllegalAccess = true;
           }
