@@ -267,7 +267,7 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
       RegisterAllocator registerAllocator,
       InternalOptions options) {
     final DexBuilder builder = new DexBuilder(ir, registerAllocator, options);
-    code = builder.build(method.getArity());
+    code = builder.build();
   }
 
   @Override
