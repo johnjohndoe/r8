@@ -45,6 +45,16 @@ public class ConstString extends Format21c {
   }
 
   @Override
+  public ConstString asConstString() {
+    return this;
+  }
+
+  @Override
+  public boolean isConstString() {
+    return true;
+  }
+
+  @Override
   public String toString(ClassNameMapper naming) {
     return formatString("v" + AA + ", \"" + BBBB.toString() + "\"");
   }

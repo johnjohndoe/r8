@@ -42,7 +42,6 @@ import com.android.tools.r8.graph.DexCode.TryHandler;
 import com.android.tools.r8.graph.DexCode.TryHandler.TypeAddrPair;
 import com.android.tools.r8.graph.DexDebugEventBuilder;
 import com.android.tools.r8.graph.DexItemFactory;
-import com.android.tools.r8.graph.DexString;
 import com.android.tools.r8.graph.DexType;
 import com.android.tools.r8.ir.code.Argument;
 import com.android.tools.r8.ir.code.BasicBlock;
@@ -108,9 +107,6 @@ public class DexBuilder {
   private int inRegisterCount = 0;
   private int outRegisterCount = 0;
 
-  // The string reference in the code with the highest index.
-  private DexString highestSortingReferencedString = null;
-
   // Whether or not the generated code has a backwards branch.
   private boolean hasBackwardsBranch = false;
 
@@ -136,7 +132,6 @@ public class DexBuilder {
     instructionToInfo = new Info[instructionNumberToIndex(ir.numberRemainingInstructions())];
     inRegisterCount = 0;
     outRegisterCount = 0;
-    highestSortingReferencedString = null;
     nextBlock = null;
   }
 
@@ -258,15 +253,15 @@ public class DexBuilder {
     TryInfo tryInfo = computeTryInfo();
 
     // Return the dex code.
-    DexCode code = new DexCode(
-        registerAllocator.registersUsed(),
-        inRegisterCount,
-        outRegisterCount,
-        dexInstructions.toArray(new Instruction[dexInstructions.size()]),
-        tryInfo.tries,
-        tryInfo.handlers,
-        debugEventBuilder.build(),
-        highestSortingReferencedString);
+    DexCode code =
+        new DexCode(
+            registerAllocator.registersUsed(),
+            inRegisterCount,
+            outRegisterCount,
+            dexInstructions.toArray(new Instruction[dexInstructions.size()]),
+            tryInfo.tries,
+            tryInfo.handlers,
+            debugEventBuilder.build());
 
     return code;
   }
@@ -397,13 +392,6 @@ public class DexBuilder {
 
   private void needsIfRewriting(BasicBlock block) {
     ifsNeedingRewrite.add(block);
-  }
-
-  public void registerStringReference(DexString string) {
-    if (highestSortingReferencedString == null
-        || string.slowCompareTo(highestSortingReferencedString) > 0) {
-      highestSortingReferencedString = string;
-    }
   }
 
   public void requestOutgoingRegisters(int requiredRegisterCount) {

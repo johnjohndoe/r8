@@ -122,6 +122,22 @@ public abstract class Instruction {
     this.offset = offset;
   }
 
+  public ConstString asConstString() {
+    return null;
+  }
+
+  public boolean isConstString() {
+    return false;
+  }
+
+  public ConstStringJumbo asConstStringJumbo() {
+    return null;
+  }
+
+  public boolean isConstStringJumbo() {
+    return false;
+  }
+
   public boolean isSimpleNop() {
     return !isPayload() && this instanceof Nop;
   }
