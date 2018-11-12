@@ -59,6 +59,60 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 
 public class TestBase {
+
+  public enum R8Mode {
+    Full,
+    Compat
+  }
+
+  public static R8TestBuilder testForR8(TemporaryFolder temp, Backend backend) {
+    return R8TestBuilder.create(new TestState(temp), backend, R8Mode.Full);
+  }
+
+  public static R8TestBuilder testForR8Compat(TemporaryFolder temp, Backend backend) {
+    return R8TestBuilder.create(new TestState(temp), backend, R8Mode.Compat);
+  }
+
+  public static D8TestBuilder testForD8(TemporaryFolder temp) {
+    return D8TestBuilder.create(new TestState(temp));
+  }
+
+  public static DXTestBuilder testForDX(TemporaryFolder temp) {
+    return DXTestBuilder.create(new TestState(temp));
+  }
+
+  public static JvmTestBuilder testForJvm(TemporaryFolder temp) {
+    return JvmTestBuilder.create(new TestState(temp));
+  }
+
+  public static ProguardTestBuilder testForProguard(TemporaryFolder temp) {
+    return ProguardTestBuilder.create(new TestState(temp));
+  }
+
+  public R8TestBuilder testForR8(Backend backend) {
+    return testForR8(temp, backend);
+  }
+
+  public R8TestBuilder testForR8Compat(Backend backend) {
+    return testForR8Compat(temp, backend);
+  }
+
+  public D8TestBuilder testForD8() {
+    return testForD8(temp);
+  }
+
+  public DXTestBuilder testForDX() {
+    return testForDX(temp);
+  }
+
+  public JvmTestBuilder testForJvm() {
+    return testForJvm(temp);
+  }
+
+  public ProguardTestBuilder testForProguard() {
+    return testForProguard(temp);
+  }
+
   public enum Backend {
     CF,
     DEX

@@ -509,14 +509,14 @@ public class ToolHelper {
     }
   }
 
-  private static String getProguardScript() {
+  public static String getProguardScript() {
     if (isWindows()) {
       return PROGUARD + ".bat";
     }
     return PROGUARD + ".sh";
   }
 
-  private static String getProguard6Script() {
+  public static String getProguard6Script() {
     if (isWindows()) {
       return PROGUARD6_0_1 + ".bat";
     }
@@ -863,6 +863,14 @@ public class ToolHelper {
     return runR8WithFullResult(command, optionsConsumer);
   }
 
+  public static void runR8WithoutResult(
+      R8Command command, Consumer<InternalOptions> optionsConsumer)
+      throws CompilationFailedException {
+    InternalOptions internalOptions = command.getInternalOptions();
+    optionsConsumer.accept(internalOptions);
+    R8.runForTesting(command.getInputApp(), internalOptions);
+  }
+
   public static AndroidApp runR8WithFullResult(
       R8Command command, Consumer<InternalOptions> optionsConsumer)
       throws CompilationFailedException {
@@ -918,6 +926,14 @@ public class ToolHelper {
     }
     D8.runForTesting(command.getInputApp(), options);
     return compatSink.build();
+  }
+
+  public static void runD8WithoutResult(
+      D8Command command, Consumer<InternalOptions> optionsConsumer)
+      throws CompilationFailedException {
+    InternalOptions internalOptions = command.getInternalOptions();
+    optionsConsumer.accept(internalOptions);
+    D8.runForTesting(command.getInputApp(), internalOptions);
   }
 
   public static AndroidApp runDexer(String fileName, String outDir, String... extraArgs)
@@ -1502,11 +1518,17 @@ public class ToolHelper {
     public final int exitCode;
     public final String stdout;
     public final String stderr;
+    public final String command;
 
-    ProcessResult(int exitCode, String stdout, String stderr) {
+    ProcessResult(int exitCode, String stdout, String stderr, String command) {
       this.exitCode = exitCode;
       this.stdout = stdout;
       this.stderr = stderr;
+      this.command = command;
+    }
+
+    ProcessResult(int exitCode, String stdout, String stderr) {
+      this(exitCode, stdout, stderr, null);
     }
 
     @Override
@@ -1545,7 +1567,8 @@ public class ToolHelper {
   }
 
   public static ProcessResult runProcess(ProcessBuilder builder) throws IOException {
-    System.out.println(String.join(" ", builder.command()));
+    String command = String.join(" ", builder.command());
+    System.out.println(command);
     Process p = builder.start();
     // Drain stdout and stderr so that the process does not block. Read stdout and stderr
     // in parallel to make sure that neither buffer can get filled up which will cause the
@@ -1563,7 +1586,8 @@ public class ToolHelper {
     } catch (InterruptedException e) {
       throw new RuntimeException("Execution interrupted", e);
     }
-    return new ProcessResult(p.exitValue(), stdoutReader.getResult(), stderrReader.getResult());
+    return new ProcessResult(
+        p.exitValue(), stdoutReader.getResult(), stderrReader.getResult(), command);
   }
 
   public static R8Command.Builder addProguardConfigurationConsumer(

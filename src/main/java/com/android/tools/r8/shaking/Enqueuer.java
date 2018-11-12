@@ -1038,7 +1038,8 @@ public class Enqueuer {
 
   private void markVirtualMethodAsLive(DexEncodedMethod method, KeepReason reason) {
     assert method != null;
-    assert !method.accessFlags.isAbstract();
+    // Only explicit keep rules should make abstract methods live.
+    assert !method.accessFlags.isAbstract() || reason.isDueToKeepRule();
     if (!liveMethods.contains(method)) {
       if (Log.ENABLED) {
         Log.verbose(getClass(), "Adding virtual method `%s` to live set.", method.method);
@@ -1358,10 +1359,16 @@ public class Enqueuer {
       return;
     }
     if (target.isVirtualMethod()) {
-      // A virtual method. Mark it as reachable so that subclasses, if instantiated, keep
-      // their overrides. However, we don't mark it live, as a keep rule might not imply that
-      // the corresponding class is live.
-      markVirtualMethodAsReachable(target.method, holder.accessFlags.isInterface(), reason);
+      // A virtual method.
+      if (reason.isDueToKeepRule()) {
+        // Always mark methods kept due to keep rules live.
+        markVirtualMethodAsLive(target, reason);
+      } else {
+        // Mark it as reachable so that subclasses, if instantiated, keep their overrides.
+        // However, we don't mark it live, as a keep rule might not imply that the corresponding
+        // class is live.
+        markVirtualMethodAsReachable(target.method, holder.accessFlags.isInterface(), reason);
+      }
       // Reachability for default methods is based on live subtypes in general. For keep rules,
       // we need special handling as we essentially might have live subtypes that are outside of
       // our reach. Do this here, as we still know that this is due to a keep rule.
@@ -1763,6 +1770,10 @@ public class Enqueuer {
      */
     public final Set<DexMethod> neverInline;
     /**
+     * All types that *must* never be merged due to a configuration directive (testing only).
+     */
+    public final Set<DexType> neverMerge;
+    /**
      * All items with -identifiernamestring rule.
      * Bound boolean value indicates the rule is explicitly specified by users (<code>true</code>)
      * or not, i.e., implicitly added by R8 (<code>false</code>).
@@ -1821,6 +1832,7 @@ public class Enqueuer {
       this.alwaysInline = enqueuer.rootSet.alwaysInline;
       this.forceInline = enqueuer.rootSet.forceInline;
       this.neverInline = enqueuer.rootSet.neverInline;
+      this.neverMerge = enqueuer.rootSet.neverMerge;
       this.identifierNameStrings = joinIdentifierNameStrings(
           enqueuer.rootSet.identifierNameStrings, enqueuer.identifierNameStrings);
       this.prunedTypes = Collections.emptySet();
@@ -1863,6 +1875,7 @@ public class Enqueuer {
       this.alwaysInline = previous.alwaysInline;
       this.forceInline = previous.forceInline;
       this.neverInline = previous.neverInline;
+      this.neverMerge = previous.neverMerge;
       this.identifierNameStrings = previous.identifierNameStrings;
       this.prunedTypes = mergeSets(previous.prunedTypes, removedClasses);
       this.switchMaps = previous.switchMaps;
@@ -1915,6 +1928,10 @@ public class Enqueuer {
       this.alwaysInline = previous.alwaysInline;
       this.forceInline = lense.rewriteMethodsWithRenamedSignature(previous.forceInline);
       this.neverInline = lense.rewriteMethodsWithRenamedSignature(previous.neverInline);
+      assert lense.assertDefinitionNotModified(
+          previous.neverMerge.stream().map(this::definitionFor).filter(Objects::nonNull)
+              .collect(Collectors.toList()));
+      this.neverMerge = previous.neverMerge;
       this.identifierNameStrings =
           lense.rewriteReferencesConservatively(previous.identifierNameStrings);
       // Switchmap classes should never be affected by renaming.
@@ -1958,6 +1975,7 @@ public class Enqueuer {
       this.alwaysInline = previous.alwaysInline;
       this.forceInline = previous.forceInline;
       this.neverInline = previous.neverInline;
+      this.neverMerge = previous.neverMerge;
       this.identifierNameStrings = previous.identifierNameStrings;
       this.prunedTypes = previous.prunedTypes;
       this.switchMaps = switchMaps;

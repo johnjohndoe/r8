@@ -65,6 +65,7 @@ public class RootSetBuilder {
   private final Set<DexMethod> alwaysInline = Sets.newIdentityHashSet();
   private final Set<DexMethod> forceInline = Sets.newIdentityHashSet();
   private final Set<DexMethod> neverInline = Sets.newIdentityHashSet();
+  private final Set<DexType> neverMerge = Sets.newIdentityHashSet();
   private final Map<DexDefinition, Map<DexDefinition, ProguardKeepRule>> dependentNoShrinking =
       new IdentityHashMap<>();
   private final Map<DexDefinition, ProguardMemberRule> noSideEffects = new IdentityHashMap<>();
@@ -209,7 +210,7 @@ public class RootSetBuilder {
             // Members mentioned at -keepclassmembers always depend on their holder.
             preconditionSupplier = ImmutableMap.of((definition -> true), clazz);
             markMatchingVisibleMethods(clazz, memberKeepRules, rule, preconditionSupplier);
-            markMatchingFields(clazz, memberKeepRules, rule, preconditionSupplier);
+            markMatchingVisibleFields(clazz, memberKeepRules, rule, preconditionSupplier);
             break;
           }
           case KEEP_CLASSES_WITH_MEMBERS: {
@@ -232,7 +233,7 @@ public class RootSetBuilder {
               preconditionSupplier.put((definition -> true), null);
             }
             markMatchingVisibleMethods(clazz, memberKeepRules, rule, preconditionSupplier);
-            markMatchingFields(clazz, memberKeepRules, rule, preconditionSupplier);
+            markMatchingVisibleFields(clazz, memberKeepRules, rule, preconditionSupplier);
             break;
           }
           case CONDITIONAL:
@@ -252,15 +253,19 @@ public class RootSetBuilder {
           || rule instanceof ProguardKeepPackageNamesRule) {
         markClass(clazz, rule);
         markMatchingVisibleMethods(clazz, memberKeepRules, rule, null);
-        markMatchingFields(clazz, memberKeepRules, rule, null);
+        markMatchingVisibleFields(clazz, memberKeepRules, rule, null);
       } else if (rule instanceof ProguardAssumeNoSideEffectRule) {
         markMatchingVisibleMethods(clazz, memberKeepRules, rule, null);
-        markMatchingFields(clazz, memberKeepRules, rule, null);
+        markMatchingVisibleFields(clazz, memberKeepRules, rule, null);
+      } else if (rule instanceof ClassMergingRule) {
+        if (allRulesSatisfied(memberKeepRules, clazz)) {
+          markClass(clazz, rule);
+        }
       } else if (rule instanceof InlineRule) {
         markMatchingMethods(clazz, memberKeepRules, rule, null);
       } else if (rule instanceof ProguardAssumeValuesRule) {
         markMatchingVisibleMethods(clazz, memberKeepRules, rule, null);
-        markMatchingFields(clazz, memberKeepRules, rule, null);
+        markMatchingVisibleFields(clazz, memberKeepRules, rule, null);
       } else {
         assert rule instanceof ProguardIdentifierNameStringRule;
         markMatchingFields(clazz, memberKeepRules, rule, null);
@@ -328,6 +333,7 @@ public class RootSetBuilder {
         alwaysInline,
         forceInline,
         neverInline,
+        neverMerge,
         noSideEffects,
         assumedValues,
         dependentNoShrinking,
@@ -461,12 +467,17 @@ public class RootSetBuilder {
       Collection<ProguardMemberRule> memberKeepRules,
       ProguardConfigurationRule rule,
       Map<Predicate<DexDefinition>, DexDefinition> preconditionSupplier) {
-    Set<Wrapper<DexMethod>> methodsMarked = new HashSet<>();
-    Arrays.stream(clazz.directMethods()).forEach(method -> {
-      DexDefinition precondition = testAndGetPrecondition(method, preconditionSupplier);
-      markMethod(method, memberKeepRules, methodsMarked, rule, precondition);
-    });
+    Set<Wrapper<DexMethod>> methodsMarked =
+        options.forceProguardCompatibility ? null : new HashSet<>();
+    DexClass startingClass = clazz;
     while (clazz != null) {
+      // In compat mode traverse all direct methods in the hierarchy.
+      if (clazz == startingClass || options.forceProguardCompatibility) {
+        Arrays.stream(clazz.directMethods()).forEach(method -> {
+          DexDefinition precondition = testAndGetPrecondition(method, preconditionSupplier);
+          markMethod(method, memberKeepRules, methodsMarked, rule, precondition);
+        });
+      }
       Arrays.stream(clazz.virtualMethods()).forEach(method -> {
         DexDefinition precondition = testAndGetPrecondition(method, preconditionSupplier);
         markMethod(method, memberKeepRules, methodsMarked, rule, precondition);
@@ -484,6 +495,21 @@ public class RootSetBuilder {
       DexDefinition precondition = testAndGetPrecondition(method, preconditionSupplier);
       markMethod(method, memberKeepRules, null, rule, precondition);
     });
+  }
+
+  private void markMatchingVisibleFields(
+      DexClass clazz,
+      Collection<ProguardMemberRule> memberKeepRules,
+      ProguardConfigurationRule rule,
+      Map<Predicate<DexDefinition>, DexDefinition> preconditionSupplier) {
+    while (clazz != null) {
+      clazz.forEachField(
+          field -> {
+            DexDefinition precondition = testAndGetPrecondition(field, preconditionSupplier);
+            markField(field, memberKeepRules, rule, precondition);
+          });
+      clazz = clazz.superType == null ? null : application.definitionFor(clazz.superType);
+    }
   }
 
   private void markMatchingFields(
@@ -675,8 +701,9 @@ public class RootSetBuilder {
       Set<Wrapper<DexMethod>> methodsMarked,
       ProguardConfigurationRule context,
       DexDefinition precondition) {
-    if ((methodsMarked != null)
+    if (methodsMarked != null
         && methodsMarked.contains(MethodSignatureEquivalence.get().wrap(method.method))) {
+      // Ignore, method is overridden in sub class.
       return;
     }
     for (ProguardMemberRule rule : rules) {
@@ -804,6 +831,16 @@ public class RootSetBuilder {
         default:
           throw new Unreachable();
       }
+    } else if (context instanceof ClassMergingRule) {
+      switch (((ClassMergingRule) context).getType()) {
+        case NEVER:
+          if (item.isDexClass()) {
+            neverMerge.add(item.asDexClass().type);
+          }
+          break;
+        default:
+          throw new Unreachable();
+      }
     } else if (context instanceof ProguardIdentifierNameStringRule) {
       if (item.isDexEncodedField()) {
         identifierNameStrings.add(item.asDexEncodedField().field);
@@ -824,6 +861,7 @@ public class RootSetBuilder {
     public final Set<DexMethod> alwaysInline;
     public final Set<DexMethod> forceInline;
     public final Set<DexMethod> neverInline;
+    public final Set<DexType> neverMerge;
     public final Map<DexDefinition, ProguardMemberRule> noSideEffects;
     public final Map<DexDefinition, ProguardMemberRule> assumedValues;
     private final Map<DexDefinition, Map<DexDefinition, ProguardKeepRule>> dependentNoShrinking;
@@ -840,6 +878,7 @@ public class RootSetBuilder {
         Set<DexMethod> alwaysInline,
         Set<DexMethod> forceInline,
         Set<DexMethod> neverInline,
+        Set<DexType> neverMerge,
         Map<DexDefinition, ProguardMemberRule> noSideEffects,
         Map<DexDefinition, ProguardMemberRule> assumedValues,
         Map<DexDefinition, Map<DexDefinition, ProguardKeepRule>> dependentNoShrinking,
@@ -854,6 +893,7 @@ public class RootSetBuilder {
       this.alwaysInline = Collections.unmodifiableSet(alwaysInline);
       this.forceInline = Collections.unmodifiableSet(forceInline);
       this.neverInline = Collections.unmodifiableSet(neverInline);
+      this.neverMerge = Collections.unmodifiableSet(neverMerge);
       this.noSideEffects = Collections.unmodifiableMap(noSideEffects);
       this.assumedValues = Collections.unmodifiableMap(assumedValues);
       this.dependentNoShrinking = dependentNoShrinking;

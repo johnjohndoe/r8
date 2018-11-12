@@ -17,6 +17,12 @@ public abstract class ClassSubject extends Subject {
 
   public abstract void forAllMethods(Consumer<FoundMethodSubject> inspection);
 
+  public final List<FoundMethodSubject> allMethods() {
+    ImmutableList.Builder<FoundMethodSubject> builder = ImmutableList.builder();
+    forAllMethods(builder::add);
+    return builder.build();
+  }
+
   public MethodSubject method(Method method) {
     List<String> parameters = new ArrayList<>();
     for (Class<?> parameterType : method.getParameterTypes()) {
@@ -26,6 +32,8 @@ public abstract class ClassSubject extends Subject {
   }
 
   public abstract MethodSubject method(String returnType, String name, List<String> parameters);
+
+  public abstract MethodSubject uniqueMethodWithName(String name);
 
   public MethodSubject mainMethod() {
     return method("void", "main", ImmutableList.of("java.lang.String[]"));

@@ -66,10 +66,12 @@ public class ForceInlineTest extends TestBase {
 
   @Test
   public void testDefaultInlining() throws Exception {
-    CodeInspector inspector = runTest(ImmutableList.of(
-        "-keep class **.Main { *; }",
-        "-dontobfuscate"
-    ));
+    CodeInspector inspector =
+        runTest(
+            ImmutableList.of(
+                "-keep class **.Main { *; }",
+                "-nevermerge @com.android.tools.r8.NeverMerge class *",
+                "-dontobfuscate"));
 
     ClassSubject classA = inspector.clazz(A.class);
     ClassSubject classB = inspector.clazz(B.class);
@@ -92,12 +94,14 @@ public class ForceInlineTest extends TestBase {
 
   @Test
   public void testNeverInline() throws Exception {
-    CodeInspector inspector = runTest(ImmutableList.of(
-        "-neverinline class **.A { method(); }",
-        "-neverinline class **.B { method(); }",
-        "-keep class **.Main { *; }",
-        "-dontobfuscate"
-    ));
+    CodeInspector inspector =
+        runTest(
+            ImmutableList.of(
+                "-neverinline class **.A { method(); }",
+                "-neverinline class **.B { method(); }",
+                "-keep class **.Main { *; }",
+                "-nevermerge @com.android.tools.r8.NeverMerge class *",
+                "-dontobfuscate"));
 
     ClassSubject classA = inspector.clazz(A.class);
     ClassSubject classB = inspector.clazz(B.class);
@@ -117,12 +121,14 @@ public class ForceInlineTest extends TestBase {
 
   @Test
   public void testForceInline() throws Exception {
-    CodeInspector inspector = runTest(ImmutableList.of(
-        "-forceinline class **.A { int m(int, int); }",
-        "-forceinline class **.B { int m(int, int); }",
-        "-keep class **.Main { *; }",
-        "-dontobfuscate"
-    ));
+    CodeInspector inspector =
+        runTest(
+            ImmutableList.of(
+                "-forceinline class **.A { int m(int, int); }",
+                "-forceinline class **.B { int m(int, int); }",
+                "-keep class **.Main { *; }",
+                "-nevermerge @com.android.tools.r8.NeverMerge class *",
+                "-dontobfuscate"));
 
     ClassSubject classA = inspector.clazz(A.class);
     ClassSubject classB = inspector.clazz(B.class);
@@ -139,11 +145,13 @@ public class ForceInlineTest extends TestBase {
   @Test
   public void testForceInlineFails() throws Exception {
     try {
-      CodeInspector inspector = runTest(ImmutableList.of(
-          "-forceinline class **.A { int x(); }",
-          "-keep class **.Main { *; }",
-          "-dontobfuscate"
-      ));
+      CodeInspector inspector =
+          runTest(
+              ImmutableList.of(
+                  "-forceinline class **.A { int x(); }",
+                  "-keep class **.Main { *; }",
+                  "-nevermerge @com.android.tools.r8.NeverMerge class *",
+                  "-dontobfuscate"));
       fail("Force inline of non-inlinable method succeeded");
     } catch (Throwable t) {
       // Ignore assertion error.
