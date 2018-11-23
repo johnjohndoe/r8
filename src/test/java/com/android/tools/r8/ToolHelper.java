@@ -136,6 +136,10 @@ public class ToolHelper {
         this.shortName = shortName;
       }
 
+      public boolean isLatest() {
+        return this == DEFAULT;
+      }
+
       public boolean isNewerThan(Version other) {
         return compareTo(other) > 0;
       }
