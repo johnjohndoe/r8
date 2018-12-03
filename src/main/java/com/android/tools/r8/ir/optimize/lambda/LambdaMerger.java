@@ -304,9 +304,11 @@ public final class LambdaMerger {
             .sorted(DexEncodedMethod::slowCompare)
             .collect(Collectors.toList());
     for (DexEncodedMethod method : methods) {
-      converter.processMethod(method, feedback,
+      DexEncodedMethod mappedMethod =
+          converter.getGraphLense().mapDexEncodedMethod(converter.appInfo, method);
+      converter.processMethod(mappedMethod, feedback,
           x -> false, CallSiteInformation.empty(), Outliner::noProcessing);
-      assert method.isProcessed();
+      assert mappedMethod.isProcessed();
     }
   }
 
