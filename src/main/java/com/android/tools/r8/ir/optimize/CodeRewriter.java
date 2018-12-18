@@ -818,8 +818,18 @@ public class CodeRewriter {
         continue;
       }
 
-      if (insn.isInstanceGet() ||
-          (insn.isInstancePut() && insn.asInstancePut().object() == receiver)) {
+      if (insn.isInstanceGet() || insn.isInstancePut()) {
+        if (insn.isInstancePut()) {
+          InstancePut instancePutInstruction = insn.asInstancePut();
+          // Only allow field writes to the receiver.
+          if (instancePutInstruction.object() != receiver) {
+            return;
+          }
+          // Do not allow the receiver to escape via a field write.
+          if (instancePutInstruction.value() == receiver) {
+            return;
+          }
+        }
         DexField field = insn.asFieldInstruction().getField();
         if (field.clazz == clazz.type && clazz.lookupInstanceField(field) != null) {
           // Require only accessing instance fields of the *current* class.
@@ -880,7 +890,7 @@ public class CodeRewriter {
   public void identifyParameterUsages(
       DexEncodedMethod method, IRCode code, OptimizationFeedback feedback) {
     List<ParameterUsage> usages = new ArrayList<>();
-    List<Value> values = code.collectArguments(true);
+    List<Value> values = code.collectArguments();
     for (int i = 0; i < values.size(); i++) {
       Value value = values.get(i);
       if (value.numberOfPhiUsers() > 0) {

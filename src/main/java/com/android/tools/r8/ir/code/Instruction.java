@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
 
-public abstract class Instruction {
+public abstract class Instruction implements InstructionOrPhi {
 
   protected Value outValue = null;
   protected final List<Value> inValues = new ArrayList<>();
@@ -497,6 +497,11 @@ public abstract class Instruction {
 
   public Set<Value> getDebugValues() {
     return debugValues != null ? debugValues : ImmutableSet.of();
+  }
+
+  @Override
+  public boolean isInstruction() {
+    return true;
   }
 
   public boolean isArrayGet() {

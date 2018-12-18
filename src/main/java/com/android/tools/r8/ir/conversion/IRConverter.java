@@ -487,10 +487,9 @@ public class IRConverter {
       BiConsumer<IRCode, DexEncodedMethod> outlineHandler =
           outliner == null ? Outliner::noProcessing : outliner.identifyCandidateMethods();
       callGraph.forEachMethod(
-          (method, isProcessedConcurrently) -> {
-            processMethod(
-                method, directFeedback, isProcessedConcurrently, callGraph, outlineHandler);
-          },
+          (method, isProcessedConcurrently) ->
+              processMethod(
+                  method, directFeedback, isProcessedConcurrently, callGraph, outlineHandler),
           executorService);
       timing.end();
     }
@@ -841,14 +840,21 @@ public class IRConverter {
       // lambda, it is not get collected by merger.
       assert options.enableInlining && inliner != null;
       classInliner.processMethodCode(
-          appInfo.withLiveness(), codeRewriter, method, code, isProcessedConcurrently,
-          methodsToInline -> inliner.performForcedInlining(method, code, methodsToInline),
-          Suppliers.memoize(() -> inliner.createDefaultOracle(
-              method, code,
-              isProcessedConcurrently, callSiteInformation,
-              Integer.MAX_VALUE / 2, Integer.MAX_VALUE / 2)
-          )
-      );
+          appInfo.withLiveness(),
+          codeRewriter,
+          method,
+          code,
+          isProcessedConcurrently,
+          inliner,
+          Suppliers.memoize(
+              () ->
+                  inliner.createDefaultOracle(
+                      method,
+                      code,
+                      isProcessedConcurrently,
+                      callSiteInformation,
+                      Integer.MAX_VALUE / 2,
+                      Integer.MAX_VALUE / 2)));
       assert code.isConsistentSSA();
     }
 

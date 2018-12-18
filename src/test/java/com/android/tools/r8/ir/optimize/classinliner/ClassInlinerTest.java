@@ -4,6 +4,7 @@
 
 package com.android.tools.r8.ir.optimize.classinliner;
 
+import static com.android.tools.r8.ir.desugar.LambdaRewriter.LAMBDA_CLASS_NAME_PREFIX;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -43,6 +44,7 @@ import com.android.tools.r8.utils.InternalOptions;
 import com.android.tools.r8.utils.codeinspector.ClassSubject;
 import com.android.tools.r8.utils.codeinspector.CodeInspector;
 import com.android.tools.r8.utils.codeinspector.FieldAccessInstructionSubject;
+import com.android.tools.r8.utils.codeinspector.FoundClassSubject;
 import com.android.tools.r8.utils.codeinspector.InstructionSubject;
 import com.android.tools.r8.utils.codeinspector.NewInstanceInstructionSubject;
 import com.google.common.collect.Sets;
@@ -352,14 +354,23 @@ public class ClassInlinerTest extends TestBase {
             "java.lang.StringBuilder"),
         collectTypes(clazz, "testStatelessLambda", "void"));
 
+    // TODO(b/120814598): Should only be "java.lang.StringBuilder". Lambdas are not class inlined
+    // because parameter usage is not available for each lambda constructor.
+    Set<String> expectedTypes = Sets.newHashSet("java.lang.StringBuilder");
+    expectedTypes.addAll(
+        inspector.allClasses().stream()
+            .map(FoundClassSubject::getFinalName)
+            .filter(name -> name.contains(LAMBDA_CLASS_NAME_PREFIX))
+            .collect(Collectors.toList()));
     assertEquals(
-        Sets.newHashSet(
-            "java.lang.StringBuilder"),
+        expectedTypes,
         collectTypes(clazz, "testStatefulLambda", "void", "java.lang.String", "java.lang.String"));
 
-    assertEquals(0,
-        inspector.allClasses().stream()
-            .filter(ClassSubject::isSynthesizedJavaLambdaClass).count());
+    // TODO(b/120814598): Should be 0. Lambdas are not class inlined because parameter usage is not
+    // available for each lambda constructor.
+    assertEquals(
+        3,
+        inspector.allClasses().stream().filter(ClassSubject::isSynthesizedJavaLambdaClass).count());
   }
 
   private Set<String> collectTypes(

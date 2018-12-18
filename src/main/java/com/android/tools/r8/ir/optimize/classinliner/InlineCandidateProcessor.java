@@ -24,17 +24,18 @@ import com.android.tools.r8.ir.code.IRCode;
 import com.android.tools.r8.ir.code.If;
 import com.android.tools.r8.ir.code.InstanceGet;
 import com.android.tools.r8.ir.code.Instruction;
+import com.android.tools.r8.ir.code.InstructionOrPhi;
 import com.android.tools.r8.ir.code.Invoke.Type;
 import com.android.tools.r8.ir.code.InvokeDirect;
 import com.android.tools.r8.ir.code.InvokeMethod;
 import com.android.tools.r8.ir.code.InvokeMethodWithReceiver;
 import com.android.tools.r8.ir.code.Value;
 import com.android.tools.r8.ir.desugar.LambdaRewriter;
+import com.android.tools.r8.ir.optimize.Inliner;
 import com.android.tools.r8.ir.optimize.Inliner.InlineAction;
 import com.android.tools.r8.ir.optimize.Inliner.InliningInfo;
 import com.android.tools.r8.ir.optimize.Inliner.Reason;
 import com.android.tools.r8.ir.optimize.InliningOracle;
-import com.android.tools.r8.ir.optimize.classinliner.ClassInliner.InlinerAction;
 import com.android.tools.r8.kotlin.KotlinInfo;
 import com.android.tools.r8.shaking.Enqueuer.AppInfoWithLiveness;
 import com.android.tools.r8.utils.Pair;
@@ -56,6 +57,7 @@ final class InlineCandidateProcessor {
   private final DexItemFactory factory;
   private final AppInfoWithLiveness appInfo;
   private final LambdaRewriter lambdaRewriter;
+  private final Inliner inliner;
   private final Predicate<DexClass> isClassEligible;
   private final Predicate<DexEncodedMethod> isProcessedConcurrently;
   private final DexEncodedMethod method;
@@ -76,12 +78,17 @@ final class InlineCandidateProcessor {
   private int estimatedCombinedSizeForInlining = 0;
 
   InlineCandidateProcessor(
-      DexItemFactory factory, AppInfoWithLiveness appInfo,
-      LambdaRewriter lambdaRewriter, Predicate<DexClass> isClassEligible,
+      DexItemFactory factory,
+      AppInfoWithLiveness appInfo,
+      LambdaRewriter lambdaRewriter,
+      Inliner inliner,
+      Predicate<DexClass> isClassEligible,
       Predicate<DexEncodedMethod> isProcessedConcurrently,
-      DexEncodedMethod method, Instruction root) {
+      DexEncodedMethod method,
+      Instruction root) {
     this.factory = factory;
     this.lambdaRewriter = lambdaRewriter;
+    this.inliner = inliner;
     this.isClassEligible = isClassEligible;
     this.method = method;
     this.root = root;
@@ -101,8 +108,8 @@ final class InlineCandidateProcessor {
       return false;
     }
 
-    eligibleClass = isNewInstance() ?
-        root.asNewInstance().clazz : root.asStaticGet().getField().type;
+    eligibleClass =
+        root.isNewInstance() ? root.asNewInstance().clazz : root.asStaticGet().getField().type;
     eligibleClassDefinition = appInfo.definitionFor(eligibleClass);
     if (eligibleClassDefinition == null && lambdaRewriter != null) {
       // Check if the class is synthesized for a desugared lambda
@@ -128,7 +135,7 @@ final class InlineCandidateProcessor {
       return false;
     }
 
-    if (isNewInstance()) {
+    if (root.isNewInstance()) {
       // NOTE: if the eligible class does not directly extend java.lang.Object,
       // we also have to guarantee that it is initialized with initializer classified as
       // TrivialInstanceInitializer. This will be checked in areInstanceUsersEligible(...).
@@ -215,53 +222,78 @@ final class InlineCandidateProcessor {
         !appInfo.isPinned(eligibleClassDefinition.lookupStaticField(instanceField).field);
   }
 
-  // Checks if the inlining candidate instance users are eligible,
-  // see comment on processMethodCode(...).
-  boolean areInstanceUsersEligible(
-      DexType invocationContext, Supplier<InliningOracle> defaultOracle) {
+  /**
+   * Checks if the inlining candidate instance users are eligible, see comment on {@link
+   * ClassInliner#processMethodCode}.
+   *
+   * @return null if all users are eligible, or the first ineligible user.
+   */
+  protected InstructionOrPhi areInstanceUsersEligible(Supplier<InliningOracle> defaultOracle) {
     // No Phi users.
     if (eligibleInstance.numberOfPhiUsers() > 0) {
-      return false; // Not eligible.
+      return eligibleInstance.firstPhiUser(); // Not eligible.
     }
 
     for (Instruction user : eligibleInstance.uniqueUsers()) {
       // Field read/write.
-      if (user.isInstanceGet() ||
-          (user.isInstancePut() && user.asInstancePut().value() != eligibleInstance)) {
+      if (user.isInstanceGet()
+          || (user.isInstancePut() && user.asInstancePut().value() != eligibleInstance)) {
         DexField field = user.asFieldInstruction().getField();
-        if (field.clazz == eligibleClass &&
-            eligibleClassDefinition.lookupInstanceField(field) != null) {
+        if (field.clazz == eligibleClass
+            && eligibleClassDefinition.lookupInstanceField(field) != null) {
           // Since class inliner currently only supports classes directly extending
           // java.lang.Object, we don't need to worry about fields defined in superclasses.
           continue;
         }
-        return false; // Not eligible.
+        return user; // Not eligible.
       }
 
-      // Eligible constructor call (for new instance roots only).
-      if (user.isInvokeDirect() && root.isNewInstance()) {
-        InliningInfo inliningInfo = isEligibleConstructorCall(user.asInvokeDirect());
-        if (inliningInfo != null) {
-          methodCallsOnInstance.put(user.asInvokeDirect(), inliningInfo);
-          continue;
-        }
-      }
-
-      // Eligible virtual method call on the instance as a receiver.
-      if (user.isInvokeVirtual() || user.isInvokeInterface()) {
-        InliningInfo inliningInfo =
-            isEligibleDirectVirtualMethodCall(user.asInvokeMethodWithReceiver());
-        if (inliningInfo != null) {
-          methodCallsOnInstance.put(user.asInvokeMethodWithReceiver(), inliningInfo);
-          continue;
-        }
-      }
-
-      // Eligible usage as an invocation argument.
       if (user.isInvokeMethod()) {
-        if (isExtraMethodCallEligible(defaultOracle, user.asInvokeMethod(), invocationContext)) {
-          continue;
+        InvokeMethod invokeMethod = user.asInvokeMethod();
+        DexEncodedMethod singleTarget = findSingleTarget(invokeMethod);
+        if (!isEligibleSingleTarget(singleTarget)) {
+          return user; // Not eligible.
         }
+
+        // Eligible constructor call (for new instance roots only).
+        if (user.isInvokeDirect()) {
+          InvokeDirect invoke = user.asInvokeDirect();
+          if (factory.isConstructor(invoke.getInvokedMethod())) {
+            boolean isCorrespondingConstructorCall =
+                root.isNewInstance()
+                    && !invoke.inValues().isEmpty()
+                    && root.outValue() == invoke.inValues().get(0);
+            if (isCorrespondingConstructorCall) {
+              InliningInfo inliningInfo =
+                  isEligibleConstructorCall(user.asInvokeDirect(), singleTarget, defaultOracle);
+              if (inliningInfo != null) {
+                methodCallsOnInstance.put(user.asInvokeDirect(), inliningInfo);
+                continue;
+              }
+            }
+          }
+        }
+
+        // Eligible virtual method call on the instance as a receiver.
+        if (user.isInvokeVirtual() || user.isInvokeInterface()) {
+          InvokeMethodWithReceiver invoke = user.asInvokeMethodWithReceiver();
+          InliningInfo inliningInfo = isEligibleDirectVirtualMethodCall(invoke, singleTarget);
+          if (inliningInfo != null) {
+            methodCallsOnInstance.put(invoke, inliningInfo);
+            continue;
+          }
+        }
+
+        // Eligible usage as an invocation argument.
+        if (isExtraMethodCall(invokeMethod)) {
+          assert !invokeMethod.isInvokeSuper();
+          assert !invokeMethod.isInvokePolymorphic();
+          if (isExtraMethodCallEligible(invokeMethod, singleTarget, defaultOracle)) {
+            continue;
+          }
+        }
+
+        return user; // Not eligible.
       }
 
       // Allow some IF instructions.
@@ -274,9 +306,9 @@ final class InlineCandidateProcessor {
         }
       }
 
-      return false;  // Not eligible.
+      return user; // Not eligible.
     }
-    return true;
+    return null; // Eligible.
   }
 
   // Process inlining, includes the following steps:
@@ -289,10 +321,34 @@ final class InlineCandidateProcessor {
   //  * remove root instruction
   //
   // Returns `true` if at least one method was inlined.
-  boolean processInlining(IRCode code, InlinerAction inliner) {
+  boolean processInlining(IRCode code, Supplier<InliningOracle> defaultOracle) {
     replaceUsagesAsUnusedArgument(code);
-    boolean anyInlinedMethods = forceInlineExtraMethodInvocations(inliner);
-    anyInlinedMethods |= forceInlineDirectMethodInvocations(inliner);
+
+    boolean anyInlinedMethods = forceInlineExtraMethodInvocations(code);
+    if (anyInlinedMethods) {
+      // Reset the collections.
+      methodCallsOnInstance.clear();
+      extraMethodCalls.clear();
+      unusedArguments.clear();
+      estimatedCombinedSizeForInlining = 0;
+
+      // Repeat user analysis
+      InstructionOrPhi ineligibleUser = areInstanceUsersEligible(defaultOracle);
+      if (ineligibleUser != null) {
+        // We introduced a user that we cannot handle in the class inliner as a result of force
+        // inlining. Abort gracefully from class inlining without removing the instance.
+        //
+        // Alternatively we would need to collect additional information about the behavior of
+        // methods (which is bad for memory), or we would need to analyze the called methods before
+        // inlining them. The latter could be good solution, since we are going to build IR for the
+        // methods that need to be inlined anyway.
+        return true;
+      }
+      assert extraMethodCalls.isEmpty();
+      assert unusedArguments.isEmpty();
+    }
+
+    anyInlinedMethods |= forceInlineDirectMethodInvocations(code);
     removeMiscUsages(code);
     removeFieldReads(code);
     removeFieldWrites();
@@ -317,36 +373,20 @@ final class InlineCandidateProcessor {
     unusedArguments.clear();
   }
 
-  private boolean forceInlineExtraMethodInvocations(InlinerAction inliner) {
+  private boolean forceInlineExtraMethodInvocations(IRCode code) {
     if (extraMethodCalls.isEmpty()) {
       return false;
     }
-
     // Inline extra methods.
-    inliner.inline(extraMethodCalls);
-
-    // Reset the collections.
-    methodCallsOnInstance.clear();
-    extraMethodCalls.clear();
-    unusedArguments.clear();
-    estimatedCombinedSizeForInlining = 0;
-
-    // Repeat user analysis
-    if (!areInstanceUsersEligible(null, () -> {
-      throw new Unreachable("Inlining oracle is expected to be needed");
-    })) {
-      throw new Unreachable("Analysis must succeed after inlining of extra methods");
-    }
-    assert extraMethodCalls.isEmpty();
-    assert unusedArguments.isEmpty();
+    inliner.performForcedInlining(method, code, extraMethodCalls);
     return true;
   }
 
-  private boolean forceInlineDirectMethodInvocations(InlinerAction inliner) {
+  private boolean forceInlineDirectMethodInvocations(IRCode code) {
     if (methodCallsOnInstance.isEmpty()) {
       return false;
     }
-    inliner.inline(methodCallsOnInstance);
+    inliner.performForcedInlining(method, code, methodCallsOnInstance);
     return true;
   }
 
@@ -390,7 +430,11 @@ final class InlineCandidateProcessor {
         continue;
       }
 
-      throw new Unreachable("Unexpected usage left after method inlining: " + user);
+      throw new Unreachable(
+          "Unexpected usage left in method `"
+              + method.method.toSourceString()
+              + "` after inlining: "
+              + user);
     }
 
     if (needToRemoveUnreachableBlocks) {
@@ -414,7 +458,11 @@ final class InlineCandidateProcessor {
         continue;
       }
 
-      throw new Unreachable("Unexpected usage left after method inlining: " + user);
+      throw new Unreachable(
+          "Unexpected usage left in method `"
+              + method.method.toSourceString()
+              + "` after inlining: "
+              + user);
     }
   }
 
@@ -437,45 +485,57 @@ final class InlineCandidateProcessor {
   private void removeFieldWrites() {
     for (Instruction user : eligibleInstance.uniqueUsers()) {
       if (!user.isInstancePut()) {
-        throw new Unreachable("Unexpected usage left after field reads removed: " + user);
+        throw new Unreachable(
+            "Unexpected usage left in method `"
+                + method.method.toSourceString()
+                + "` after field reads removed: "
+                + user);
       }
       if (user.asInstancePut().getField().clazz != eligibleClass) {
-        throw new Unreachable("Unexpected field write left after field reads removed: " + user);
+        throw new Unreachable(
+            "Unexpected field write left in method `"
+                + method.method.toSourceString()
+                + "` after field reads removed: "
+                + user);
       }
       removeInstruction(user);
     }
   }
 
-  private InliningInfo isEligibleConstructorCall(InvokeDirect initInvoke) {
-    // Must be a constructor of the exact same class.
-    DexMethod init = initInvoke.getInvokedMethod();
-    if (!factory.isConstructor(init)) {
-      return null;
-    }
+  private InliningInfo isEligibleConstructorCall(
+      InvokeDirect invoke, DexEncodedMethod singleTarget, Supplier<InliningOracle> defaultOracle) {
+    assert factory.isConstructor(invoke.getInvokedMethod());
+    assert isEligibleSingleTarget(singleTarget);
+
     // Must be a constructor called on the receiver.
-    if (initInvoke.inValues().lastIndexOf(eligibleInstance) != 0) {
+    if (invoke.inValues().lastIndexOf(eligibleInstance) != 0) {
       return null;
     }
 
-    assert init.holder == eligibleClass
-        : "Inlined constructor? [invoke: " + initInvoke +
-        ", expected class: " + eligibleClass + "]";
+    DexMethod init = invoke.getInvokedMethod();
+    // Must be a constructor of the exact same class.
+    if (init.holder != eligibleClass) {
+      // Calling a constructor on a class that is different from the type of the instance.
+      // Gracefully abort class inlining (see the test B116282409).
+      return null;
+    }
 
-    DexEncodedMethod definition = findSingleTarget(init, true);
-    if (definition == null || isProcessedConcurrently.test(definition)) {
+    // Check that the `eligibleInstance` does not escape via the constructor.
+    ParameterUsage parameterUsage = singleTarget.getOptimizationInfo().getParameterUsages(0);
+    if (!isEligibleParameterUsage(parameterUsage, invoke, defaultOracle)) {
       return null;
     }
 
     // Don't inline code w/o normal returns into block with catch handlers (b/64432527).
-    if (initInvoke.getBlock().hasCatchHandlers() &&
-        definition.getOptimizationInfo().neverReturnsNormally()) {
+    if (invoke.getBlock().hasCatchHandlers()
+        && singleTarget.getOptimizationInfo().neverReturnsNormally()) {
       return null;
     }
 
     if (isDesugaredLambda) {
       // Lambda desugaring synthesizes eligible constructors.
-      markSizeForInlining(definition);
-      return new InliningInfo(definition, eligibleClass);
+      markSizeForInlining(singleTarget);
+      return new InliningInfo(singleTarget, eligibleClass);
     }
 
     // If the superclass of the initializer is NOT java.lang.Object, the super class
@@ -485,34 +545,27 @@ final class InlineCandidateProcessor {
     //       any class initializers in superclass chain or in superinterfaces, see
     //       details in ClassInliner::computeClassEligible(...).
     if (eligibleClassDefinition.superType != factory.objectType) {
-      TrivialInitializer info = definition.getOptimizationInfo().getTrivialInitializerInfo();
+      TrivialInitializer info = singleTarget.getOptimizationInfo().getTrivialInitializerInfo();
       if (!(info instanceof TrivialInstanceInitializer)) {
         return null;
       }
     }
 
-    if (!definition.isInliningCandidate(method, Reason.SIMPLE, appInfo)) {
-      // We won't be able to inline it here.
-
-      // Note that there may be some false negatives here since the method may
-      // reference private fields of its class which are supposed to be replaced
-      // with arguments after inlining. We should try and improve it later.
-
-      // Using -allowaccessmodification mitigates this.
-      return null;
-    }
-
-    return definition.getOptimizationInfo().getClassInlinerEligibility() != null
-        ? new InliningInfo(definition, eligibleClass) : null;
+    return singleTarget.getOptimizationInfo().getClassInlinerEligibility() != null
+        ? new InliningInfo(singleTarget, eligibleClass)
+        : null;
   }
 
-  private InliningInfo isEligibleDirectVirtualMethodCall(InvokeMethodWithReceiver invoke) {
+  private InliningInfo isEligibleDirectVirtualMethodCall(
+      InvokeMethodWithReceiver invoke, DexEncodedMethod singleTarget) {
+    assert isEligibleSingleTarget(singleTarget);
     if (invoke.inValues().lastIndexOf(eligibleInstance) > 0) {
       return null; // Instance passed as an argument.
     }
     return isEligibleVirtualMethodCall(
         !invoke.getBlock().hasCatchHandlers(),
         invoke.getInvokedMethod(),
+        singleTarget,
         eligibility ->
             !eligibility.returnsReceiver
                 || invoke.outValue() == null
@@ -520,13 +573,21 @@ final class InlineCandidateProcessor {
   }
 
   private InliningInfo isEligibleIndirectVirtualMethodCall(DexMethod callee) {
-    return isEligibleVirtualMethodCall(false, callee, eligibility -> !eligibility.returnsReceiver);
+    DexEncodedMethod singleTarget = eligibleClassDefinition.lookupVirtualMethod(callee);
+    if (isEligibleSingleTarget(singleTarget)) {
+      return isEligibleVirtualMethodCall(
+          false, callee, singleTarget, eligibility -> !eligibility.returnsReceiver);
+    }
+    return null;
   }
 
   private InliningInfo isEligibleVirtualMethodCall(
       boolean allowMethodsWithoutNormalReturns,
       DexMethod callee,
+      DexEncodedMethod singleTarget,
       Predicate<ClassInlinerEligibility> eligibilityAcceptanceCheck) {
+    assert isEligibleSingleTarget(singleTarget);
+
     // We should not inline a method if the invocation has type interface or virtual and the
     // signature of the invocation resolves to a private or static method.
     ResolutionResult resolutionResult = appInfo.resolveMethod(callee.holder, callee);
@@ -534,23 +595,13 @@ final class InlineCandidateProcessor {
         && !resolutionResult.asSingleTarget().isVirtualMethod()) {
       return null;
     }
-
-    DexEncodedMethod singleTarget = findSingleTarget(callee, false);
-    if (singleTarget == null
-        || !singleTarget.isVirtualMethod()
-        || isProcessedConcurrently.test(singleTarget)) {
+    if (!singleTarget.isVirtualMethod()) {
       return null;
     }
     if (method == singleTarget) {
       return null; // Don't inline itself.
     }
-
     if (isDesugaredLambda) {
-      // If this is the call to method of the desugared lambda, we consider only calls
-      // to main lambda method eligible (for both direct and indirect calls).
-      if (singleTarget.accessFlags.isBridge()) {
-        return null;
-      }
       markSizeForInlining(singleTarget);
       return new InliningInfo(singleTarget, eligibleClass);
     }
@@ -573,19 +624,25 @@ final class InlineCandidateProcessor {
       return null;
     }
 
-    if (!singleTarget.isInliningCandidate(method, Reason.SIMPLE, appInfo)) {
-      // We won't be able to inline it here.
-
-      // Note that there may be some false negatives here since the method may
-      // reference private fields of its class which are supposed to be replaced
-      // with arguments after inlining. We should try and improve it later.
-
-      // Using -allowaccessmodification mitigates this.
-      return null;
-    }
-
     markSizeForInlining(singleTarget);
     return new InliningInfo(singleTarget, eligibleClass);
+  }
+
+  private boolean isExtraMethodCall(InvokeMethod invoke) {
+    if (invoke.isInvokeDirect() && factory.isConstructor(invoke.getInvokedMethod())) {
+      return false;
+    }
+    if (invoke.isInvokeMethodWithReceiver()
+        && invoke.asInvokeMethodWithReceiver().getReceiver() == eligibleInstance) {
+      return false;
+    }
+    if (invoke.isInvokeSuper()) {
+      return false;
+    }
+    if (invoke.isInvokePolymorphic()) {
+      return false;
+    }
+    return true;
   }
 
   // Analyzes if a method invoke the eligible instance is passed to is eligible. In short,
@@ -607,41 +664,51 @@ final class InlineCandidateProcessor {
   //   -- method itself can be inlined
   //
   private boolean isExtraMethodCallEligible(
-      Supplier<InliningOracle> defaultOracle,
-      InvokeMethod invokeMethod,
-      DexType invocationContext) {
+      InvokeMethod invoke, DexEncodedMethod singleTarget, Supplier<InliningOracle> defaultOracle) {
+    // Don't consider constructor invocations and super calls, since we don't want to forcibly
+    // inline them.
+    assert isExtraMethodCall(invoke);
+    assert isEligibleSingleTarget(singleTarget);
 
-    List<Value> arguments = Lists.newArrayList(invokeMethod.inValues());
+    List<Value> arguments = Lists.newArrayList(invoke.inValues());
 
-    // Don't consider constructor invocations and super calls, since
-    // we don't want to forcibly inline them.
-    if (invokeMethod.isInvokeSuper() ||
-        (invokeMethod.isInvokeDirect() && factory.isConstructor(invokeMethod.getInvokedMethod()))) {
+    // If we got here with invocation on receiver the user is ineligible.
+    if (invoke.isInvokeMethodWithReceiver() && arguments.get(0) == eligibleInstance) {
       return false;
-    }
-
-    // Remove receiver from arguments.
-    if (invokeMethod.isInvokeMethodWithReceiver()) {
-      if (arguments.get(0) == eligibleInstance) {
-        // If we got here with invocation on receiver the user is ineligible.
-        return false;
-      }
-      arguments.remove(0);
-    }
-
-    // Need single target.
-    DexEncodedMethod singleTarget = invokeMethod.lookupSingleTarget(appInfo, invocationContext);
-    if (singleTarget == null || isProcessedConcurrently.test(singleTarget)) {
-      return false;  // Not eligible.
     }
 
     OptimizationInfo optimizationInfo = singleTarget.getOptimizationInfo();
 
     // Don't inline code w/o normal returns into block with catch handlers (b/64432527).
-    if (invokeMethod.getBlock().hasCatchHandlers() && optimizationInfo.neverReturnsNormally()) {
+    if (invoke.getBlock().hasCatchHandlers() && optimizationInfo.neverReturnsNormally()) {
       return false;
     }
 
+    // Go through all arguments, see if all usages of eligibleInstance are good.
+    if (!isEligibleParameterUsages(invoke, arguments, singleTarget, defaultOracle)) {
+      return false;
+    }
+
+    for (int argIndex = 0; argIndex < arguments.size(); argIndex++) {
+      Value argument = arguments.get(argIndex);
+      if (argument == eligibleInstance && optimizationInfo.getParameterUsages(argIndex).notUsed()) {
+        // Reference can be removed since it's not used.
+        unusedArguments.add(new Pair<>(invoke, argIndex));
+      }
+    }
+
+    extraMethodCalls.put(invoke, new InliningInfo(singleTarget, null));
+
+    // Looks good.
+    markSizeForInlining(singleTarget);
+    return true;
+  }
+
+  private boolean isEligibleParameterUsages(
+      InvokeMethod invoke,
+      List<Value> arguments,
+      DexEncodedMethod singleTarget,
+      Supplier<InliningOracle> defaultOracle) {
     // Go through all arguments, see if all usages of eligibleInstance are good.
     for (int argIndex = 0; argIndex < arguments.size(); argIndex++) {
       Value argument = arguments.get(argIndex);
@@ -650,54 +717,77 @@ final class InlineCandidateProcessor {
       }
 
       // Have parameter usage info?
+      OptimizationInfo optimizationInfo = singleTarget.getOptimizationInfo();
       ParameterUsage parameterUsage = optimizationInfo.getParameterUsages(argIndex);
-      if (parameterUsage == null) {
-        return false;  // Don't know anything.
+      if (!isEligibleParameterUsage(parameterUsage, invoke, defaultOracle)) {
+        return false;
       }
+    }
+    return true;
+  }
 
-      if (parameterUsage.notUsed()) {
-        // Reference can be removed since it's not used.
-        unusedArguments.add(new Pair<>(invokeMethod, argIndex));
-        continue;
-      }
+  private boolean isEligibleParameterUsage(
+      ParameterUsage parameterUsage, InvokeMethod invoke, Supplier<InliningOracle> defaultOracle) {
+    if (parameterUsage == null) {
+      return false; // Don't know anything.
+    }
 
-      if (parameterUsage.returnValue &&
-          !(invokeMethod.outValue() == null || invokeMethod.outValue().numberOfAllUsers() == 0)) {
+    if (parameterUsage.notUsed()) {
+      return true;
+    }
+
+    if (parameterUsage.isAssignedToField) {
+      return false;
+    }
+
+    if (parameterUsage.isReturned) {
+      if (!(invoke.outValue() == null || invoke.outValue().numberOfAllUsers() == 0)) {
         // Used as return value which is not ignored.
         return false;
       }
+    }
 
-      if (!Sets.difference(parameterUsage.ifZeroTest, ALLOWED_ZERO_TEST_TYPES).isEmpty()) {
-        // Used in unsupported zero-check-if kinds.
-        return false;
-      }
+    if (!Sets.difference(parameterUsage.ifZeroTest, ALLOWED_ZERO_TEST_TYPES).isEmpty()) {
+      // Used in unsupported zero-check-if kinds.
+      return false;
+    }
 
-      for (Pair<Type, DexMethod> call : parameterUsage.callsReceiver) {
-        if (call.getFirst() != Type.VIRTUAL && call.getFirst() != Type.INTERFACE) {
-          // Don't support direct and super calls yet.
-          return false;
-        }
+    for (Pair<Type, DexMethod> call : parameterUsage.callsReceiver) {
+      Type type = call.getFirst();
+      DexMethod target = call.getSecond();
 
+      if (type == Type.VIRTUAL || type == Type.INTERFACE) {
         // Is the method called indirectly still eligible?
-        InliningInfo potentialInliningInfo = isEligibleIndirectVirtualMethodCall(call.getSecond());
+        InliningInfo potentialInliningInfo = isEligibleIndirectVirtualMethodCall(target);
         if (potentialInliningInfo == null) {
           return false;
         }
-
-        // Check if the method is inline-able by standard inliner.
-        InlineAction inlineAction =
-            invokeMethod.computeInlining(defaultOracle.get(), method.method.holder);
-        if (inlineAction == null) {
+      } else if (type == Type.DIRECT) {
+        if (!isTrivialInitializer(target)) {
+          // Only calls to trivial initializers are supported at this point.
           return false;
         }
+      } else {
+        // Static and super calls are not yet supported.
+        return false;
       }
 
-      extraMethodCalls.put(invokeMethod, new InliningInfo(singleTarget, null));
+      // Check if the method is inline-able by standard inliner.
+      InlineAction inlineAction = invoke.computeInlining(defaultOracle.get(), method.method.holder);
+      if (inlineAction == null) {
+        return false;
+      }
     }
-
-    // Looks good.
-    markSizeForInlining(singleTarget);
     return true;
+  }
+
+  private boolean isTrivialInitializer(DexMethod method) {
+    if (method == appInfo.dexItemFactory.objectMethods.constructor) {
+      return true;
+    }
+    DexEncodedMethod encodedMethod = appInfo.definitionFor(method);
+    return encodedMethod != null
+        && encodedMethod.getOptimizationInfo().getTrivialInitializerInfo() != null;
   }
 
   private boolean exemptFromInstructionLimit(DexEncodedMethod inlinee) {
@@ -723,20 +813,49 @@ final class InlineCandidateProcessor {
     }
   }
 
-  private boolean isNewInstance() {
-    return root.isNewInstance();
-  }
-
-  private DexEncodedMethod findSingleTarget(DexMethod callee, boolean isDirect) {
+  private DexEncodedMethod findSingleTarget(InvokeMethod invoke) {
+    if (isExtraMethodCall(invoke)) {
+      DexType invocationContext = method.method.holder;
+      return invoke.lookupSingleTarget(appInfo, invocationContext);
+    }
     // We don't use computeSingleTarget(...) on invoke since it sometimes fails to
     // find the single target, while this code may be more successful since we exactly
     // know what is the actual type of the receiver.
 
     // Note that we also intentionally limit ourselves to methods directly defined in
     // the instance's class. This may be improved later.
-    return isDirect
-        ? eligibleClassDefinition.lookupDirectMethod(callee)
-        : eligibleClassDefinition.lookupVirtualMethod(callee);
+    return invoke.isInvokeDirect()
+        ? eligibleClassDefinition.lookupDirectMethod(invoke.getInvokedMethod())
+        : eligibleClassDefinition.lookupVirtualMethod(invoke.getInvokedMethod());
+  }
+
+  private boolean isEligibleSingleTarget(DexEncodedMethod singleTarget) {
+    if (singleTarget == null) {
+      return false;
+    }
+    if (isProcessedConcurrently.test(singleTarget)) {
+      return false;
+    }
+    if (isDesugaredLambda && !singleTarget.accessFlags.isBridge()) {
+      // OK if this is the call to the main method of a desugared lambda (for both direct and
+      // indirect calls).
+      //
+      // Note: This is needed because lambda methods are generally processed in the same batch as
+      // they are class inlined, which means that the call to isInliningCandidate() below will
+      // return false.
+      return true;
+    }
+    if (!singleTarget.isInliningCandidate(method, Reason.SIMPLE, appInfo)) {
+      // If `singleTarget` is not an inlining candidate, we won't be able to inline it here.
+      //
+      // Note that there may be some false negatives here since the method may
+      // reference private fields of its class which are supposed to be replaced
+      // with arguments after inlining. We should try and improve it later.
+      //
+      // Using -allowaccessmodification mitigates this.
+      return false;
+    }
+    return true;
   }
 
   private void removeInstruction(Instruction instruction) {

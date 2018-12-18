@@ -1807,6 +1807,10 @@ public class Enqueuer {
      */
     public final Set<DexMethod> neverInline;
     /**
+     * All types that *must* never be inlined due to a configuration directive (testing only).
+     */
+    public final Set<DexType> neverClassInline;
+    /**
      * All types that *must* never be merged due to a configuration directive (testing only).
      */
     public final Set<DexType> neverMerge;
@@ -1869,6 +1873,7 @@ public class Enqueuer {
       this.alwaysInline = enqueuer.rootSet.alwaysInline;
       this.forceInline = enqueuer.rootSet.forceInline;
       this.neverInline = enqueuer.rootSet.neverInline;
+      this.neverClassInline = enqueuer.rootSet.neverClassInline;
       this.neverMerge = enqueuer.rootSet.neverMerge;
       this.identifierNameStrings = joinIdentifierNameStrings(
           enqueuer.rootSet.identifierNameStrings, enqueuer.identifierNameStrings);
@@ -1912,6 +1917,7 @@ public class Enqueuer {
       this.alwaysInline = previous.alwaysInline;
       this.forceInline = previous.forceInline;
       this.neverInline = previous.neverInline;
+      this.neverClassInline = previous.neverClassInline;
       this.neverMerge = previous.neverMerge;
       this.identifierNameStrings = previous.identifierNameStrings;
       this.prunedTypes = mergeSets(previous.prunedTypes, removedClasses);
@@ -1968,6 +1974,7 @@ public class Enqueuer {
       assert lense.assertDefinitionNotModified(
           previous.neverMerge.stream().map(this::definitionFor).filter(Objects::nonNull)
               .collect(Collectors.toList()));
+      this.neverClassInline = rewriteItems(previous.neverClassInline, lense::lookupType);
       this.neverMerge = previous.neverMerge;
       this.identifierNameStrings =
           lense.rewriteReferencesConservatively(previous.identifierNameStrings);
@@ -2012,6 +2019,7 @@ public class Enqueuer {
       this.alwaysInline = previous.alwaysInline;
       this.forceInline = previous.forceInline;
       this.neverInline = previous.neverInline;
+      this.neverClassInline = previous.neverClassInline;
       this.neverMerge = previous.neverMerge;
       this.identifierNameStrings = previous.identifierNameStrings;
       this.prunedTypes = previous.prunedTypes;
