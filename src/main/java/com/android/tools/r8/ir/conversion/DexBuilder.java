@@ -21,6 +21,7 @@ import com.android.tools.r8.code.IfLt;
 import com.android.tools.r8.code.IfLtz;
 import com.android.tools.r8.code.IfNe;
 import com.android.tools.r8.code.IfNez;
+import com.android.tools.r8.code.InstanceOf;
 import com.android.tools.r8.code.Instruction;
 import com.android.tools.r8.code.Move16;
 import com.android.tools.r8.code.MoveFrom16;
@@ -102,6 +103,9 @@ public class DexBuilder {
   // Mapping from IR instructions to info for computing the dex translation. Use the
   // getInfo/setInfo methods to access the mapping.
   private Info[] instructionToInfo;
+
+  // Keeps track of the previous non-fallthrough info added to the dex builder.
+  private Info previousNonFallthroughInfo;
 
   // The number of ingoing and outgoing argument registers for the code.
   private int inRegisterCount = 0;
@@ -418,6 +422,38 @@ public class DexBuilder {
     }
   }
 
+  private boolean needsNopBetweenMoveAndInstanceOf(InstanceOf instanceOf) {
+    if (!options.canHaveArtInstanceOfVerifierBug()) {
+      return false;
+    }
+    if (previousNonFallthroughInfo instanceof MoveInfo) {
+      MoveInfo moveInfo = (MoveInfo) previousNonFallthroughInfo;
+      int moveSrcRegister = moveInfo.srcRegister(this);
+      int moveDestRegister = moveInfo.destRegister(this);
+      // If the previous move materializes as a move and we have the pattern:
+      //
+      //  move vA, vB
+      //  instance-of vB, vA, Type
+      //
+      // we insert a nop between the move and the instance-of instruction to make sure
+      // that we do not trigger a verifier bug in Art. See b/120985556.
+      if (moveSrcRegister != moveDestRegister
+          && moveSrcRegister == instanceOf.A
+          && moveDestRegister == instanceOf.B) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public void addInstanceOf(com.android.tools.r8.ir.code.InstanceOf ir, InstanceOf instanceOf) {
+    if (needsNopBetweenMoveAndInstanceOf(instanceOf)) {
+      add(ir, new Nop(), instanceOf);
+    } else {
+      add(ir, instanceOf);
+    }
+  }
+
   public void addIf(If branch) {
     assert nextBlock == branch.fallthroughBlock();
     add(branch, new IfInfo(branch));
@@ -512,6 +548,9 @@ public class DexBuilder {
   }
 
   private void setInfo(com.android.tools.r8.ir.code.Instruction instruction, Info info) {
+    if (!(info instanceof FallThroughInfo)) {
+      previousNonFallthroughInfo = info;
+    }
     instructionToInfo[instructionNumberToIndex(instruction.getNumber())] = info;
   }
 
@@ -1158,11 +1197,18 @@ public class DexBuilder {
       return (Move) getIR();
     }
 
+    public int srcRegister(DexBuilder builder) {
+      return builder.argumentOrAllocateRegister(getMove().src(), getMove().getNumber());
+    }
+
+    public int destRegister(DexBuilder builder) {
+      return builder.allocatedRegister(getMove().dest(), getMove().getNumber());
+    }
+
     @Override
     public int computeSize(DexBuilder builder) {
-      Move move = getMove();
-      int srcRegister = builder.argumentOrAllocateRegister(move.src(), move.getNumber());
-      int destRegister = builder.allocatedRegister(move.dest(), move.getNumber());
+      int srcRegister = srcRegister(builder);
+      int destRegister = destRegister(builder);
       if (srcRegister == destRegister) {
         size = 1;
       } else if (srcRegister <= Constants.U4BIT_MAX && destRegister <= Constants.U4BIT_MAX) {
@@ -1179,8 +1225,8 @@ public class DexBuilder {
     public void addInstructions(DexBuilder builder, List<Instruction> instructions) {
       Move move = getMove();
       MoveType moveType = MoveType.fromValueType(move.outType());
-      int src = builder.argumentOrAllocateRegister(move.src(), move.getNumber());
-      int dest = builder.allocatedRegister(move.dest(), move.getNumber());
+      int src = srcRegister(builder);
+      int dest = destRegister(builder);
       Instruction instruction = null;
       switch (size) {
         case 1:
