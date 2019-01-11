@@ -1422,7 +1422,7 @@ public class LinearScanRegisterAllocator implements RegisterAllocator {
   }
 
   private boolean needsSingleResultOverlappingLongOperandsWorkaround(LiveIntervals intervals) {
-    if (!options.canHaveCmpLongBug()) {
+    if (!options.canHaveCmpLongBug() && !options.canHaveLongToIntBug()) {
       return false;
     }
     if (intervals.requiredRegisters() == 2) {
@@ -1439,7 +1439,11 @@ public class LinearScanRegisterAllocator implements RegisterAllocator {
       return false;
     }
     Instruction definition = intervals.getValue().definition;
-    return definition.isCmp() && definition.asCmp().inValues().get(0).outType().isWide();
+    if (definition.isCmp()) {
+      return definition.inValues().get(0).outType().isWide();
+    }
+    return definition.isNumberConversion()
+        && definition.asNumberConversion().isLongToIntConversion();
   }
 
   private boolean singleOverlappingLong(int register1, int register2) {
@@ -1450,15 +1454,23 @@ public class LinearScanRegisterAllocator implements RegisterAllocator {
   // allocating for the result?
   private boolean isSingleResultOverlappingLongOperands(LiveIntervals intervals, int register) {
     assert needsSingleResultOverlappingLongOperandsWorkaround(intervals);
-    Value left = intervals.getValue().definition.asCmp().leftValue();
-    Value right = intervals.getValue().definition.asCmp().rightValue();
-    int leftReg =
-        left.getLiveIntervals().getSplitCovering(intervals.getStart()).getRegister();
-    int rightReg =
-        right.getLiveIntervals().getSplitCovering(intervals.getStart()).getRegister();
-    assert leftReg != NO_REGISTER;
-    assert rightReg != NO_REGISTER;
-    return singleOverlappingLong(register, leftReg) || singleOverlappingLong(register, rightReg);
+    if (intervals.getValue().definition.isCmp()) {
+      Value left = intervals.getValue().definition.asCmp().leftValue();
+      Value right = intervals.getValue().definition.asCmp().rightValue();
+      int leftReg =
+          left.getLiveIntervals().getSplitCovering(intervals.getStart()).getRegister();
+      int rightReg =
+          right.getLiveIntervals().getSplitCovering(intervals.getStart()).getRegister();
+      assert leftReg != NO_REGISTER;
+      assert rightReg != NO_REGISTER;
+      return singleOverlappingLong(register, leftReg) || singleOverlappingLong(register, rightReg);
+    } else {
+      assert intervals.getValue().definition.isNumberConversion();
+      Value inputValue = intervals.getValue().definition.asNumberConversion().inValues().get(0);
+      int inputReg
+          = inputValue.getLiveIntervals().getSplitCovering(intervals.getStart()).getRegister();
+      return register == inputReg;
+    }
   }
 
   // The dalvik jit had a bug where the long operations add, sub, or, xor and and would write
