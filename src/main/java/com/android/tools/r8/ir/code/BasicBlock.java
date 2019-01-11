@@ -15,6 +15,7 @@ import com.android.tools.r8.ir.code.Phi.RegisterReadType;
 import com.android.tools.r8.ir.conversion.DexBuilder;
 import com.android.tools.r8.ir.conversion.IRBuilder;
 import com.android.tools.r8.utils.CfgPrinter;
+import com.android.tools.r8.utils.InternalOptions;
 import com.android.tools.r8.utils.ListUtils;
 import com.android.tools.r8.utils.StringUtils;
 import com.android.tools.r8.utils.StringUtils.BraceType;
@@ -1170,10 +1171,15 @@ public class BasicBlock {
     return block;
   }
 
-  public static BasicBlock createRethrowBlock(IRCode code, Position position) {
+
+
+  public static BasicBlock createRethrowBlock(
+      IRCode code, Position position, DexType guard, InternalOptions options) {
     BasicBlock block = new BasicBlock();
-    MoveException moveException =
-        new MoveException(new Value(code.valueNumberGenerator.next(), ValueType.OBJECT, null));
+    MoveException moveException = new MoveException(
+        new Value(code.valueNumberGenerator.next(), ValueType.OBJECT, null),
+        guard,
+        options);
     moveException.setPosition(position);
     Throw throwInstruction = new Throw(moveException.outValue);
     throwInstruction.setPosition(position);
@@ -1182,6 +1188,7 @@ public class BasicBlock {
     block.close(null);
     block.setNumber(code.getHighestBlockNumber() + 1);
     return block;
+
   }
 
   public boolean isTrivialGoto() {
@@ -1391,7 +1398,10 @@ public class BasicBlock {
    * Clone catch successors from `fromBlock` into this block.
    */
   public void copyCatchHandlers(
-      IRCode code, ListIterator<BasicBlock> blockIterator, BasicBlock fromBlock) {
+      IRCode code,
+      ListIterator<BasicBlock> blockIterator,
+      BasicBlock fromBlock,
+      InternalOptions options) {
     if (catchHandlers != null && catchHandlers.hasCatchAll()) {
       return;
     }
@@ -1411,7 +1421,8 @@ public class BasicBlock {
       catchSuccessor.splitCriticalExceptionEdges(
           code.getHighestBlockNumber() + 1,
           code.valueNumberGenerator,
-          blockIterator::add);
+          blockIterator::add,
+          options);
     }
   }
 
@@ -1431,14 +1442,17 @@ public class BasicBlock {
   public int splitCriticalExceptionEdges(
       int nextBlockNumber,
       ValueNumberGenerator valueNumberGenerator,
-      Consumer<BasicBlock> onNewBlock) {
-    List<BasicBlock> predecessors = this.getPredecessors();
+      Consumer<BasicBlock> onNewBlock,
+      InternalOptions options) {
+    List<BasicBlock> predecessors = getPredecessors();
     boolean hasMoveException = entry().isMoveException();
+    DexType exceptionType = null;
     MoveException move = null;
     Position position = entry().getPosition();
     if (hasMoveException) {
       // Remove the move-exception instruction.
       move = entry().asMoveException();
+      exceptionType = move.getExceptionType();
       assert move.getDebugValues().isEmpty();
       getInstructions().remove(0);
     }
@@ -1456,7 +1470,7 @@ public class BasicBlock {
       if (hasMoveException) {
         Value value = new Value(valueNumberGenerator.next(), ValueType.OBJECT, move.getLocalInfo());
         values.add(value);
-        MoveException newMove = new MoveException(value);
+        MoveException newMove = new MoveException(value, exceptionType, options);
         newBlock.add(newMove);
         newMove.setPosition(position);
       }

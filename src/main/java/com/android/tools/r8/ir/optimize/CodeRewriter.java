@@ -289,8 +289,12 @@ public class CodeRewriter {
       splitIterator.previous();
       BasicBlock newBlock = splitIterator.split(code, 1);
       // Generate rethrow block.
-      BasicBlock rethrowBlock =
-          BasicBlock.createRethrowBlock(code, lastSelfRecursiveCall.getPosition());
+      DexType guard = options.itemFactory.throwableType;
+      BasicBlock rethrowBlock = BasicBlock.createRethrowBlock(
+          code,
+          lastSelfRecursiveCall.getPosition(),
+          guard,
+          options);
       code.blocks.add(rethrowBlock);
       // Add catch handler to the block containing the last recursive call.
       newBlock.addCatchHandler(rethrowBlock, options.itemFactory.throwableType);
