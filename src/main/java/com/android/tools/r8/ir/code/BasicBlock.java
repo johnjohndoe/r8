@@ -1171,8 +1171,6 @@ public class BasicBlock {
     return block;
   }
 
-
-
   public static BasicBlock createRethrowBlock(
       IRCode code, Position position, DexType guard, InternalOptions options) {
     BasicBlock block = new BasicBlock();
@@ -1188,7 +1186,6 @@ public class BasicBlock {
     block.close(null);
     block.setNumber(code.getHighestBlockNumber() + 1);
     return block;
-
   }
 
   public boolean isTrivialGoto() {
