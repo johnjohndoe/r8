@@ -13,7 +13,6 @@ import com.android.tools.r8.ir.conversion.CfBuilder;
 import com.android.tools.r8.ir.conversion.DexBuilder;
 import com.android.tools.r8.ir.optimize.Inliner.ConstraintWithTarget;
 import com.android.tools.r8.ir.optimize.InliningConstraints;
-import com.android.tools.r8.utils.InternalOptions;
 import java.util.Arrays;
 
 public class NewArrayFilledData extends Instruction {
@@ -96,9 +95,8 @@ public class NewArrayFilledData extends Instruction {
   }
 
   @Override
-  public boolean canBeDeadCode(IRCode code, InternalOptions options) {
-    // Side-effects its input values.
-    return false;
+  public boolean instructionTypeCanThrow() {
+    return true;
   }
 
   @Override

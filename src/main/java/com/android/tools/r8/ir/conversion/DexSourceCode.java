@@ -351,6 +351,10 @@ public class DexSourceCode implements SourceCode {
       return index;
     }
     if (dex.canThrow()) {
+      // TODO(zerny): Remove this from block computation.
+      if (dex.hasPayload()) {
+        arrayFilledDataPayloadResolver.addPayloadUser((FillArrayData) dex);
+      }
       // If the instruction can throw and is in a try block, add edges to its catch successors.
       Try tryRange = getTryForOffset(offset);
       if (tryRange != null) {
@@ -392,10 +396,6 @@ public class DexSourceCode implements SourceCode {
       }
       builder.ensureNormalSuccessorBlock(offset, offset + dex.getSize());
       return index;
-    }
-    // TODO(zerny): Remove this from block computation.
-    if (dex.hasPayload()) {
-      arrayFilledDataPayloadResolver.addPayloadUser((FillArrayData) dex);
     }
     // This instruction does not close the block.
     return -1;
