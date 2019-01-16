@@ -297,23 +297,38 @@ public abstract class GraphLense {
     private final BiMap<DexMethod, DexMethod> originalMethodSignatures = HashBiMap.create();
 
     public void map(DexType from, DexType to) {
+      if (from == to) {
+        return;
+      }
       typeMap.put(from, to);
     }
 
     public void map(DexMethod from, DexMethod to) {
+      if (from == to) {
+        return;
+      }
       methodMap.put(from, to);
     }
 
     public void map(DexField from, DexField to) {
+      if (from == to) {
+        return;
+      }
       fieldMap.put(from, to);
     }
 
     public void move(DexMethod from, DexMethod to) {
+      if (from == to) {
+        return;
+      }
       map(from, to);
       originalMethodSignatures.put(to, from);
     }
 
     public void move(DexField from, DexField to) {
+      if (from == to) {
+        return;
+      }
       fieldMap.put(from, to);
       originalFieldSignatures.put(to, from);
     }
@@ -761,9 +776,11 @@ public abstract class GraphLense {
     @Override
     public String toString() {
       StringBuilder builder = new StringBuilder();
-      for (Map.Entry<DexType, DexType> entry : typeMap.entrySet()) {
-        builder.append(entry.getKey().toSourceString()).append(" -> ");
-        builder.append(entry.getValue().toSourceString()).append(System.lineSeparator());
+      if (typeMap != null) {
+        for (Map.Entry<DexType, DexType> entry : typeMap.entrySet()) {
+          builder.append(entry.getKey().toSourceString()).append(" -> ");
+          builder.append(entry.getValue().toSourceString()).append(System.lineSeparator());
+        }
       }
       for (Map.Entry<DexMethod, DexMethod> entry : methodMap.entrySet()) {
         builder.append(entry.getKey().toSourceString()).append(" -> ");
