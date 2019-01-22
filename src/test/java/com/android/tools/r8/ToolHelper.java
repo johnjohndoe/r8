@@ -3,6 +3,7 @@
 // BSD-style license that can be found in the LICENSE file.
 package com.android.tools.r8;
 
+import static com.android.tools.r8.utils.FileUtils.CLASS_EXTENSION;
 import static com.android.tools.r8.utils.FileUtils.isDexFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -19,6 +20,7 @@ import com.android.tools.r8.naming.NamingLens;
 import com.android.tools.r8.shaking.FilteredClassPath;
 import com.android.tools.r8.shaking.ProguardConfiguration;
 import com.android.tools.r8.shaking.ProguardConfigurationParser;
+import com.android.tools.r8.shaking.ProguardConfigurationRule;
 import com.android.tools.r8.shaking.ProguardRuleParserException;
 import com.android.tools.r8.utils.AndroidApiLevel;
 import com.android.tools.r8.utils.AndroidApp;
@@ -56,6 +58,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -746,6 +749,19 @@ public class ToolHelper {
     List<String> parts = getNamePartsForTestPackage(pkg);
     return getClassPathForTests().resolve(
         Paths.get("", parts.toArray(new String[parts.size() - 1])));
+  }
+
+  public static Collection<Path> getClassFilesForInnerClasses(Collection<Class<?>> classes)
+      throws IOException {
+    Set<Path> paths = new HashSet<>();
+    for (Class clazz : classes) {
+      Path path = ToolHelper.getClassFileForTestClass(clazz);
+      String prefix = path.toString().replace(CLASS_EXTENSION, "$");
+      paths.addAll(
+          ToolHelper.getClassFilesForTestDirectory(
+              path.getParent(), p -> p.toString().startsWith(prefix)));
+    }
+    return paths;
   }
 
   public static String getJarEntryForTestPackage(Package pkg) {
@@ -1604,6 +1620,12 @@ public class ToolHelper {
   public static R8Command.Builder addProguardConfigurationConsumer(
       R8Command.Builder builder, Consumer<ProguardConfiguration.Builder> consumer) {
     builder.addProguardConfigurationConsumerForTesting(consumer);
+    return builder;
+  }
+
+  public static R8Command.Builder addSyntheticProguardRulesConsumerForTesting(
+      R8Command.Builder builder, Consumer<List<ProguardConfigurationRule>> consumer) {
+    builder.addSyntheticProguardRulesConsumerForTesting(consumer);
     return builder;
   }
 

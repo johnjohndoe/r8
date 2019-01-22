@@ -7,10 +7,15 @@ import com.android.tools.r8.TestBase.Backend;
 import com.android.tools.r8.ToolHelper.ProcessResult;
 import com.android.tools.r8.utils.AndroidApp;
 
-public class DXTestCompileResult extends TestCompileResult<DXTestRunResult> {
+public class DXTestCompileResult extends TestCompileResult<DXTestCompileResult, DXTestRunResult> {
 
   DXTestCompileResult(TestState state, AndroidApp app) {
     super(state, app);
+  }
+
+  @Override
+  public DXTestCompileResult self() {
+    return this;
   }
 
   @Override
@@ -19,7 +24,7 @@ public class DXTestCompileResult extends TestCompileResult<DXTestRunResult> {
   }
 
   @Override
-  public DXTestRunResult createRunResult(AndroidApp app, ProcessResult result) {
+  public DXTestRunResult createRunResult(ProcessResult result) {
     return new DXTestRunResult(app, result);
   }
 }

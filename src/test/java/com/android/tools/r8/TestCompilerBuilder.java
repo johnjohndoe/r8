@@ -11,6 +11,7 @@ import com.android.tools.r8.utils.AndroidAppConsumers;
 import com.android.tools.r8.utils.InternalOptions;
 import com.google.common.base.Suppliers;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.function.Consumer;
@@ -19,10 +20,10 @@ import java.util.function.Supplier;
 public abstract class TestCompilerBuilder<
         C extends BaseCompilerCommand,
         B extends BaseCompilerCommand.Builder<C, B>,
-        CR extends TestCompileResult<RR>,
+        CR extends TestCompileResult<CR, RR>,
         RR extends TestRunResult,
         T extends TestCompilerBuilder<C, B, CR, RR, T>>
-    extends TestBuilder<T> {
+    extends TestBaseBuilder<C, B, CR, RR, T> {
 
   public static final Consumer<InternalOptions> DEFAULT_OPTIONS =
       new Consumer<InternalOptions>() {
@@ -30,7 +31,6 @@ public abstract class TestCompilerBuilder<
         public void accept(InternalOptions options) {}
       };
 
-  final B builder;
   final Backend backend;
 
   // Default initialized setup. Can be overwritten if needed.
@@ -38,10 +38,10 @@ public abstract class TestCompilerBuilder<
   private ProgramConsumer programConsumer;
   private AndroidApiLevel defaultMinApiLevel = ToolHelper.getMinApiLevelForDexVm();
   private Consumer<InternalOptions> optionsConsumer = DEFAULT_OPTIONS;
+  private PrintStream stdout = null;
 
   TestCompilerBuilder(TestState state, B builder, Backend backend) {
-    super(state);
-    this.builder = builder;
+    super(state, builder);
     this.backend = backend;
     defaultLibrary = TestBase.runtimeJar(backend);
     programConsumer = TestBase.emptyConsumer(backend);
@@ -54,7 +54,9 @@ public abstract class TestCompilerBuilder<
       throws CompilationFailedException;
 
   public T addOptionsModification(Consumer<InternalOptions> optionsConsumer) {
-    this.optionsConsumer = this.optionsConsumer.andThen(optionsConsumer);
+    if (optionsConsumer != null) {
+      this.optionsConsumer = this.optionsConsumer.andThen(optionsConsumer);
+    }
     return self();
   }
 
@@ -67,11 +69,21 @@ public abstract class TestCompilerBuilder<
     if (backend == Backend.DEX && defaultMinApiLevel != null) {
       builder.setMinApiLevel(defaultMinApiLevel.getLevel());
     }
-    return internalCompile(builder, optionsConsumer, Suppliers.memoize(sink::build));
+    PrintStream oldOut = System.out;
+    try {
+      if (stdout != null) {
+        System.setOut(stdout);
+      }
+      return internalCompile(builder, optionsConsumer, Suppliers.memoize(sink::build));
+    } finally {
+      if (stdout != null) {
+        System.setOut(oldOut);
+      }
+    }
   }
 
   @Override
-  public TestRunResult run(String mainClass) throws IOException, CompilationFailedException {
+  public RR run(String mainClass) throws IOException, CompilationFailedException {
     return compile().run(mainClass);
   }
 
@@ -113,15 +125,19 @@ public abstract class TestCompilerBuilder<
   }
 
   @Override
-  public T addProgramFiles(Collection<Path> files) {
-    builder.addProgramFiles(files);
+  public T addLibraryFiles(Collection<Path> files) {
+    defaultLibrary = null;
+    return super.addLibraryFiles(files);
+  }
+
+  public T noDesugaring() {
+    builder.setDisableDesugaring(true);
     return self();
   }
 
-  @Override
-  public T addLibraryFiles(Collection<Path> files) {
-    defaultLibrary = null;
-    builder.addLibraryFiles(files);
+  public T redirectStdOut(PrintStream printStream) {
+    assert stdout == null;
+    stdout = printStream;
     return self();
   }
 }

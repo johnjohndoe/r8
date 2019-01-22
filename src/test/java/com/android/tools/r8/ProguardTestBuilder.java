@@ -6,9 +6,11 @@ package com.android.tools.r8;
 import com.android.tools.r8.R8Command.Builder;
 import com.android.tools.r8.TestBase.Backend;
 import com.android.tools.r8.ToolHelper.ProcessResult;
+import com.android.tools.r8.debug.DebugTestConfig;
 import com.android.tools.r8.errors.Unimplemented;
 import com.android.tools.r8.origin.Origin;
 import com.android.tools.r8.origin.PathOrigin;
+import com.android.tools.r8.utils.AndroidApiLevel;
 import com.android.tools.r8.utils.AndroidApp;
 import com.android.tools.r8.utils.DescriptorUtils;
 import com.android.tools.r8.utils.FileUtils;
@@ -98,8 +100,15 @@ public class ProguardTestBuilder
 
   // Ordered list of injar entries.
   private List<Path> injars = new ArrayList<>();
+
+  // Ordered list of libraryjar entries.
+  private List<Path> libraryjars = new ArrayList<>();
+
   // Proguard configuration file lines.
   private List<String> config = new ArrayList<>();
+
+  // Additional Proguard configuration files.
+  private List<Path> proguardConfigFiles = new ArrayList<>();
 
   private ProguardTestBuilder(TestState state, Builder builder, Backend backend) {
     super(state, builder, backend);
@@ -132,26 +141,40 @@ public class ProguardTestBuilder
         command.add("-injars");
         command.add(injar.toString());
       }
-      command.add("-libraryjars");
-      // TODO(sgjesse): Add support for running with Android Jar.
-      // command.add(ToolHelper.getAndroidJar(AndroidApiLevel.P).toString());
-      command.add(ToolHelper.getJava8RuntimeJar().toString());
+      for (Path libraryjar : libraryjars) {
+        command.add("-libraryjars");
+        command.add(libraryjar.toString());
+      }
+      if (libraryjars.isEmpty()) {
+        command.add("-libraryjars");
+        // TODO(sgjesse): Add support for running with Android Jar.
+        // command.add(ToolHelper.getAndroidJar(AndroidApiLevel.P).toString());
+        command.add(ToolHelper.getJava8RuntimeJar().toString());
+      }
       command.add("-include");
       command.add(configFile.toString());
+      for (Path proguardConfigFile : proguardConfigFiles) {
+        command.add("-include");
+        command.add(proguardConfigFile.toAbsolutePath().toString());
+      }
       command.add("-outjar");
       command.add(outJar.toString());
       command.add("-printmapping");
       command.add(mapFile.toString());
+      if (!enableTreeShaking) {
+        command.add("-dontshrink");
+      }
+      if (!enableMinification) {
+        command.add("-dontobfuscate");
+      }
       ProcessBuilder pbuilder = new ProcessBuilder(command);
       ProcessResult result = ToolHelper.runProcess(pbuilder);
       if (result.exitCode != 0) {
         throw new CompilationFailedException(result.toString());
       }
-      AndroidApp.Builder aaabuilder = AndroidApp.builder();
-      aaabuilder.addProgramFiles(outJar);
       String proguardMap =
           Files.exists(mapFile) ? FileUtils.readTextFile(mapFile, Charsets.UTF_8) : "";
-      return new ProguardTestCompileResult(getState(), aaabuilder.build(), proguardMap);
+      return new ProguardTestCompileResult(getState(), outJar, proguardMap);
     } catch (IOException e) {
       throw new CompilationFailedException(e);
     }
@@ -179,13 +202,79 @@ public class ProguardTestBuilder
 
   @Override
   public ProguardTestBuilder addProgramFiles(Collection<Path> files) {
+    for (Path file : files) {
+      if (FileUtils.isJarFile(file)) {
+        injars.add(file);
+      } else {
+        throw new Unimplemented(
+            "No support for adding class files directly (we need to compute the descriptor)");
+      }
+    }
+    return self();
+  }
+
+  @Override
+  public ProguardTestBuilder addProgramClassFileData(Collection<byte[]> classes) {
     throw new Unimplemented(
-        "No support for adding paths directly (we need to compute the descriptor)");
+        "No support for adding class files directly (we need to compute the descriptor)");
+  }
+
+  @Override
+  public ProguardTestBuilder addKeepRuleFiles(List<Path> proguardConfigFiles) {
+    this.proguardConfigFiles.addAll(proguardConfigFiles);
+    return self();
   }
 
   @Override
   public ProguardTestBuilder addKeepRules(Collection<String> rules) {
     config.addAll(rules);
     return self();
+  }
+  @Override
+  public ProguardTestBuilder addLibraryFiles(Collection<Path> files) {
+    for (Path file : files) {
+      if (FileUtils.isJarFile(file)) {
+        libraryjars.add(file);
+      } else {
+        throw new Unimplemented(
+            "No support for adding class files directly (we need to compute the descriptor)");
+      }
+    }
+    return self();
+  }
+
+  @Override
+  public ProguardTestBuilder setProgramConsumer(ProgramConsumer programConsumer) {
+    throw new Unimplemented("No support for program consumer");
+  }
+
+  @Override
+  public ProguardTestBuilder setMinApi(AndroidApiLevel minApiLevel) {
+    throw new Unimplemented("No support for setting min api");
+  }
+
+  @Override
+  public ProguardTestBuilder addMainDexListFiles(Collection<Path> files) {
+    throw new Unimplemented("No support for adding main dex list files");
+  }
+
+  @Override
+  public ProguardTestBuilder setMode(CompilationMode mode) {
+    throw new Unimplemented("No support for setting compilation mode");
+  }
+
+  @Override
+  public ProguardTestBuilder noDesugaring() {
+    throw new Unimplemented("No support for disabling desugaring");
+  }
+
+  @Override
+  public DebugTestConfig debugConfig() {
+    throw new Unimplemented("No support for debug config");
+  }
+
+  @Override
+  public ProguardTestBuilder addOptionsModification(Consumer<InternalOptions> optionsConsumer) {
+    throw new Unimplemented("No support for changing internal options");
   }
 }

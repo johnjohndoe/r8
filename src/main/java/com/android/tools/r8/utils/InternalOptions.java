@@ -46,6 +46,11 @@ public class InternalOptions {
   }
 
   public final DexItemFactory itemFactory;
+
+  public ProguardConfiguration getProguardConfiguration() {
+    return proguardConfiguration;
+  }
+
   public final ProguardConfiguration proguardConfiguration;
   public final Reporter reporter;
 

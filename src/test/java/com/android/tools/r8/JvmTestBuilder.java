@@ -3,6 +3,7 @@
 // BSD-style license that can be found in the LICENSE file.
 package com.android.tools.r8;
 
+import com.android.tools.r8.ProgramResource.Kind;
 import com.android.tools.r8.ToolHelper.ProcessResult;
 import com.android.tools.r8.debug.CfDebugTestConfig;
 import com.android.tools.r8.debug.DebugTestConfig;
@@ -24,7 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-public class JvmTestBuilder extends TestBuilder<JvmTestBuilder> {
+public class JvmTestBuilder extends TestBuilder<JvmTestRunResult, JvmTestBuilder> {
 
   private static class ClassFileResource implements ProgramResource {
 
@@ -107,9 +108,9 @@ public class JvmTestBuilder extends TestBuilder<JvmTestBuilder> {
   }
 
   @Override
-  public TestRunResult run(String mainClass) throws IOException {
+  public JvmTestRunResult run(String mainClass) throws IOException {
     ProcessResult result = ToolHelper.runJava(classpath, mainClass);
-    return new TestRunResult(builder.build(), result);
+    return new JvmTestRunResult(builder.build(), result);
   }
 
   @Override
@@ -124,20 +125,7 @@ public class JvmTestBuilder extends TestBuilder<JvmTestBuilder> {
 
   @Override
   public JvmTestBuilder addProgramClasses(Collection<Class<?>> classes) {
-    // Adding a collection of classes will build a jar of exactly those classes so that no other
-    // classes are made available via a too broad classpath directory.
-    List<ProgramResource> resources = ListUtils.map(classes, ClassFileResource::new);
-    AndroidApp build = AndroidApp.builder()
-        .addProgramResourceProvider(new ClassFileResourceProvider(resources)).build();
-    Path out;
-    try {
-      out = getState().getNewTempFolder().resolve("out.zip");
-      build.writeToZip(out, OutputMode.ClassFile);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-    classpath.add(out);
-    builder.addProgramFiles(out);
+    addProgramResources(ListUtils.map(classes, ClassFileResource::new));
     return self();
   }
 
@@ -145,6 +133,18 @@ public class JvmTestBuilder extends TestBuilder<JvmTestBuilder> {
   public JvmTestBuilder addProgramFiles(Collection<Path> files) {
     throw new Unimplemented(
         "No support for adding paths directly (we need to compute the descriptor)");
+  }
+
+  @Override
+  public JvmTestBuilder addProgramClassFileData(Collection<byte[]> files) {
+    addProgramResources(
+        ListUtils.map(files, data ->
+            ProgramResource.fromBytes(
+                Origin.unknown(),
+                Kind.CF,
+                data,
+                Collections.singleton(TestBase.extractClassDescriptor(data)))));
+    return self();
   }
 
   public JvmTestBuilder addClasspath(Path... paths) {
@@ -161,5 +161,23 @@ public class JvmTestBuilder extends TestBuilder<JvmTestBuilder> {
 
   public JvmTestBuilder addTestClasspath() {
     return addClasspath(ToolHelper.getClassPathForTests());
+  }
+
+  // Adding a collection of resources will build a jar of exactly those classes so that no other
+  // classes are made available via a too broad classpath directory.
+  private void addProgramResources(List<ProgramResource> resources) {
+    AndroidApp build =
+        AndroidApp.builder()
+            .addProgramResourceProvider(new ClassFileResourceProvider(resources))
+            .build();
+    Path out;
+    try {
+      out = getState().getNewTempFolder().resolve("out.zip");
+      build.writeToZip(out, OutputMode.ClassFile);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+    classpath.add(out);
+    builder.addProgramFiles(out);
   }
 }

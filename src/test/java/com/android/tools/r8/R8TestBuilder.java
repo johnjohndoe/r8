@@ -7,8 +7,11 @@ import com.android.tools.r8.R8Command.Builder;
 import com.android.tools.r8.TestBase.Backend;
 import com.android.tools.r8.TestBase.R8Mode;
 import com.android.tools.r8.origin.Origin;
+import com.android.tools.r8.shaking.ProguardConfiguration;
+import com.android.tools.r8.shaking.ProguardConfigurationRule;
 import com.android.tools.r8.utils.AndroidApp;
 import com.android.tools.r8.utils.InternalOptions;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -32,6 +35,7 @@ public class R8TestBuilder
   private boolean enableInliningAnnotations = false;
   private boolean enableClassInliningAnnotations = false;
   private boolean enableMergeAnnotations = false;
+  private List<String> keepRules = new ArrayList<>();
 
   @Override
   R8TestBuilder self() {
@@ -45,10 +49,32 @@ public class R8TestBuilder
     if (enableInliningAnnotations || enableClassInliningAnnotations || enableMergeAnnotations) {
       ToolHelper.allowTestProguardOptions(builder);
     }
+    if (!keepRules.isEmpty()) {
+      builder.addProguardConfiguration(keepRules, Origin.unknown());
+    }
     StringBuilder proguardMapBuilder = new StringBuilder();
+    builder.setDisableTreeShaking(!enableTreeShaking);
+    builder.setDisableMinification(!enableMinification);
     builder.setProguardMapConsumer((string, ignore) -> proguardMapBuilder.append(string));
-    ToolHelper.runR8WithoutResult(builder.build(), optionsConsumer);
-    return new R8TestCompileResult(getState(), backend, app.get(), proguardMapBuilder.toString());
+
+    class Box {
+      private List<ProguardConfigurationRule> syntheticProguardRules;
+      private ProguardConfiguration proguardConfiguration;
+    }
+    Box box = new Box();
+    ToolHelper.addSyntheticProguardRulesConsumerForTesting(
+        builder, rules -> box.syntheticProguardRules = rules);
+    ToolHelper.runR8WithoutResult(
+        builder.build(),
+        optionsConsumer.andThen(
+            options -> box.proguardConfiguration = options.getProguardConfiguration()));
+    return new R8TestCompileResult(
+        getState(),
+        backend,
+        app.get(),
+        box.proguardConfiguration,
+        box.syntheticProguardRules,
+        proguardMapBuilder.toString());
   }
 
   public R8TestBuilder addDataResources(List<DataEntryResource> resources) {
@@ -57,8 +83,16 @@ public class R8TestBuilder
   }
 
   @Override
+  public R8TestBuilder addKeepRuleFiles(List<Path> files) {
+    builder.addProguardConfigurationFiles(files);
+    return self();
+  }
+
+  @Override
   public R8TestBuilder addKeepRules(Collection<String> rules) {
-    builder.addProguardConfiguration(new ArrayList<>(rules), Origin.unknown());
+    // Delay adding the actual rules so that we only associate a single origin and unique lines to
+    // each actual rule.
+    keepRules.addAll(rules);
     return self();
   }
 

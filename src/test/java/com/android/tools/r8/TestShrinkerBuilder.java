@@ -5,20 +5,49 @@
 package com.android.tools.r8;
 
 import com.android.tools.r8.TestBase.Backend;
-import com.android.tools.r8.utils.StringUtils;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 
 public abstract class TestShrinkerBuilder<
         C extends BaseCompilerCommand,
         B extends BaseCompilerCommand.Builder<C, B>,
-        CR extends TestCompileResult<RR>,
+        CR extends TestCompileResult<CR, RR>,
         RR extends TestRunResult,
         T extends TestCompilerBuilder<C, B, CR, RR, T>>
     extends TestCompilerBuilder<C, B, CR, RR, T> {
 
+  protected boolean enableMinification = true;
+  protected boolean enableTreeShaking = true;
+
   TestShrinkerBuilder(TestState state, B builder, Backend backend) {
     super(state, builder, backend);
+  }
+
+  public T treeShaking(boolean enable) {
+    enableTreeShaking = enable;
+    return self();
+  }
+
+  public T noTreeShaking() {
+    return treeShaking(false);
+  }
+
+  public T minification(boolean enable) {
+    enableMinification = enable;
+    return self();
+  }
+
+  public T noMinification() {
+    return minification(false);
+  }
+
+  public abstract T addKeepRuleFiles(List<Path> files);
+
+  public T addKeepRuleFiles(Path... files) throws IOException {
+    return addKeepRuleFiles(Arrays.asList(files));
   }
 
   public abstract T addKeepRules(Collection<String> rules);
@@ -38,6 +67,13 @@ public abstract class TestShrinkerBuilder<
     return self();
   }
 
+  public T addKeepClassAndMembersRules(Class<?>... classes) {
+    for (Class<?> clazz : classes) {
+      addKeepRules("-keep class " + clazz.getTypeName() + " { *; }");
+    }
+    return self();
+  }
+
   public T addKeepPackageRules(Package pkg) {
     return addKeepRules("-keep class " + pkg.getName() + ".*");
   }
@@ -48,9 +84,6 @@ public abstract class TestShrinkerBuilder<
 
   public T addKeepMainRule(String mainClass) {
     return addKeepRules(
-        StringUtils.joinLines(
-            "-keep class " + mainClass + " {",
-            "  public static void main(java.lang.String[]);",
-            "}"));
+        "-keep class " + mainClass + " { public static void main(java.lang.String[]); }");
   }
 }

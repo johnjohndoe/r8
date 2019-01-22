@@ -78,6 +78,7 @@ public final class R8Command extends BaseCompilerCommand {
 
     private final List<ProguardConfigurationSource> mainDexRules = new ArrayList<>();
     private Consumer<ProguardConfiguration.Builder> proguardConfigurationConsumer = null;
+    private Consumer<List<ProguardConfigurationRule>> syntheticProguardRulesConsumer = null;
     private final List<ProguardConfigurationSource> proguardConfigs = new ArrayList<>();
     private boolean disableTreeShaking = false;
     private boolean disableMinification = false;
@@ -461,6 +462,15 @@ public final class R8Command extends BaseCompilerCommand {
             }
             c.accept(builder);
           };
+    }
+
+    void addSyntheticProguardRulesConsumerForTesting(
+        Consumer<List<ProguardConfigurationRule>> consumer) {
+      syntheticProguardRulesConsumer =
+          syntheticProguardRulesConsumer == null
+              ? consumer
+              : syntheticProguardRulesConsumer.andThen(consumer);
+
     }
 
     // Internal for-testing method to add post-processors of the proguard configuration.

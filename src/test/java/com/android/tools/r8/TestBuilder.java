@@ -3,18 +3,14 @@
 // BSD-style license that can be found in the LICENSE file.
 package com.android.tools.r8;
 
-import static com.android.tools.r8.utils.FileUtils.CLASS_EXTENSION;
-
 import com.android.tools.r8.debug.DebugTestConfig;
 import com.android.tools.r8.utils.ListUtils;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
 
-public abstract class TestBuilder<T extends TestBuilder<T>> {
+public abstract class TestBuilder<RR extends TestRunResult, T extends TestBuilder<RR, T>> {
 
   private final TestState state;
 
@@ -28,16 +24,22 @@ public abstract class TestBuilder<T extends TestBuilder<T>> {
 
   abstract T self();
 
-  public abstract TestRunResult run(String mainClass)
+  public abstract RR run(String mainClass)
       throws IOException, CompilationFailedException;
 
-  public TestRunResult run(Class mainClass) throws IOException, CompilationFailedException {
+  public RR run(Class mainClass) throws IOException, CompilationFailedException {
     return run(mainClass.getTypeName());
   }
 
   public abstract DebugTestConfig debugConfig();
 
   public abstract T addProgramFiles(Collection<Path> files);
+
+  public abstract T addProgramClassFileData(Collection<byte[]> classes);
+
+  public T addProgramClassFileData(byte[]... classes) {
+    return addProgramClassFileData(Arrays.asList(classes));
+  }
 
   public T addProgramClasses(Class<?>... classes) {
     return addProgramClasses(Arrays.asList(classes));
@@ -86,14 +88,6 @@ public abstract class TestBuilder<T extends TestBuilder<T>> {
   }
 
   static Collection<Path> getFilesForInnerClasses(Collection<Class<?>> classes) throws IOException {
-    Set<Path> paths = new HashSet<>();
-    for (Class clazz : classes) {
-      Path path = ToolHelper.getClassFileForTestClass(clazz);
-      String prefix = path.toString().replace(CLASS_EXTENSION, "$");
-      paths.addAll(
-          ToolHelper.getClassFilesForTestDirectory(
-              path.getParent(), p -> p.toString().startsWith(prefix)));
-    }
-    return paths;
+    return ToolHelper.getClassFilesForInnerClasses(classes);
   }
 }

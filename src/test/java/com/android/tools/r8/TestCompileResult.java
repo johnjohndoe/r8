@@ -11,25 +11,32 @@ import com.android.tools.r8.debug.CfDebugTestConfig;
 import com.android.tools.r8.debug.DebugTestConfig;
 import com.android.tools.r8.debug.DexDebugTestConfig;
 import com.android.tools.r8.errors.Unreachable;
-import com.android.tools.r8.graph.invokesuper.Consumer;
 import com.android.tools.r8.utils.AndroidApp;
 import com.android.tools.r8.utils.codeinspector.CodeInspector;
+import com.google.common.collect.ImmutableList;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
-public abstract class TestCompileResult<RR extends TestRunResult> {
-  final TestState state;
+public abstract class TestCompileResult<
+        CR extends TestCompileResult<CR, RR>, RR extends TestRunResult>
+    extends TestBaseResult<CR, RR> {
+
   public final AndroidApp app;
+  final List<Path> additionalRunClassPath = new ArrayList<>();
 
   TestCompileResult(TestState state, AndroidApp app) {
-    this.state = state;
+    super(state);
     this.app = app;
   }
 
   public abstract Backend getBackend();
 
-  protected abstract RR createRunResult(AndroidApp add, ProcessResult result);
+  protected abstract RR createRunResult(ProcessResult result);
 
   public RR run(Class<?> mainClass) throws IOException {
     return run(mainClass.getTypeName());
@@ -38,27 +45,31 @@ public abstract class TestCompileResult<RR extends TestRunResult> {
   public RR run(String mainClass) throws IOException {
     switch (getBackend()) {
       case DEX:
-        return runArt(mainClass);
+        return runArt(additionalRunClassPath, mainClass);
       case CF:
-        return runJava(mainClass);
+        return runJava(additionalRunClassPath, mainClass);
       default:
         throw new Unreachable();
     }
   }
 
-  public TestCompileResult writeToZip(Path file) throws IOException {
+  public CR addRunClasspath(List<Path> classpath) {
+    additionalRunClassPath.addAll(classpath);
+    return self();
+  }
+
+  public CR writeToZip(Path file) throws IOException {
     app.writeToZip(file, getBackend() == DEX ? OutputMode.DexIndexed : OutputMode.ClassFile);
-    return this;
+    return self();
   }
 
   public CodeInspector inspector() throws IOException, ExecutionException {
     return new CodeInspector(app);
   }
 
-  public TestCompileResult<RR> inspect(Consumer<CodeInspector> consumer)
-      throws IOException, ExecutionException {
+  public CR inspect(Consumer<CodeInspector> consumer) throws IOException, ExecutionException {
     consumer.accept(inspector());
-    return this;
+    return self();
   }
 
   public DebugTestConfig debugConfig() {
@@ -85,17 +96,25 @@ public abstract class TestCompileResult<RR extends TestRunResult> {
     }
   }
 
-  private RR runJava(String mainClass) throws IOException {
+  private RR runJava(List<Path> additionalClassPath, String mainClass) throws IOException {
     Path out = state.getNewTempFolder().resolve("out.zip");
     app.writeToZip(out, OutputMode.ClassFile);
-    ProcessResult result = ToolHelper.runJava(out, mainClass);
-    return createRunResult(app, result);
+    List<Path> classPath = ImmutableList.<Path>builder()
+        .addAll(additionalClassPath)
+        .add(out)
+        .build();
+    ProcessResult result = ToolHelper.runJava(classPath, mainClass);
+    return createRunResult(result);
   }
 
-  private RR runArt(String mainClass) throws IOException {
+  private RR runArt(List<Path> additionalClassPath, String mainClass) throws IOException {
     Path out = state.getNewTempFolder().resolve("out.zip");
     app.writeToZip(out, OutputMode.DexIndexed);
-    ProcessResult result = ToolHelper.runArtRaw(out.toString(), mainClass);
-    return createRunResult(app, result);
+    List<String> classPath = ImmutableList.<String>builder()
+        .addAll(additionalClassPath.stream().map(Path::toString).collect(Collectors.toList()))
+        .add(out.toString())
+        .build();
+    ProcessResult result = ToolHelper.runArtRaw(classPath, mainClass, dummy -> {});
+    return createRunResult(result);
   }
 }
