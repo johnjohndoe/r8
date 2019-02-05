@@ -13,11 +13,12 @@ import com.android.tools.r8.errors.CompilationError;
 import com.android.tools.r8.experimental.graphinfo.GraphConsumer;
 import com.android.tools.r8.graph.AppInfoWithSubtyping;
 import com.android.tools.r8.graph.AppView;
+import com.android.tools.r8.graph.AppliedGraphLens;
 import com.android.tools.r8.graph.DexApplication;
 import com.android.tools.r8.graph.DexCallSite;
 import com.android.tools.r8.graph.DexClass;
-import com.android.tools.r8.graph.DexDefinition;
 import com.android.tools.r8.graph.DexProgramClass;
+import com.android.tools.r8.graph.DexReference;
 import com.android.tools.r8.graph.DexType;
 import com.android.tools.r8.graph.GraphLense;
 import com.android.tools.r8.ir.conversion.IRConverter;
@@ -370,7 +371,7 @@ public class R8 {
           // We can now remove visibility bridges. Note that we do not need to update the
           // invoke-targets here, as the existing invokes will simply dispatch to the now
           // visible super-method. MemberRebinding, if run, will then dispatch it correctly.
-          application = new VisibilityBridgeRemover(appView.appInfo(), application).run();
+          new VisibilityBridgeRemover(appView.withLiveness()).run();
         }
       }
 
@@ -401,8 +402,10 @@ public class R8 {
               SeedMapper.seedMapperFromFile(
                   options.getProguardConfiguration().getApplyMappingFile());
           timing.begin("apply-mapping");
-          appView.setGraphLense(
-              new ProguardMapApplier(appView.withLiveness(), seedMapper).run(timing));
+          GraphLense applyMappingLense =
+              new ProguardMapApplier(appView.withLiveness(), seedMapper).run(timing);
+          rootSet = rootSet.rewrittenWithLense(applyMappingLense);
+          appView.setGraphLense(applyMappingLense);
           application = application.asDirect().rewrittenWithLense(appView.graphLense());
           appView.setAppInfo(
               appView
@@ -473,17 +476,27 @@ public class R8 {
             new EnumOrdinalMapCollector(appViewWithLiveness, options).run());
       }
 
+      assert appView.appInfo().hasLiveness();
+
       timing.begin("Create IR");
       Set<DexCallSite> desugaredCallSites;
       CfgPrinter printer = options.printCfg ? new CfgPrinter() : null;
       try {
         IRConverter converter =
-            new IRConverter(appView, options, timing, printer, mainDexClasses, rootSet);
+            new IRConverter(
+                appView.withLiveness(), options, timing, printer, mainDexClasses, rootSet);
         application = converter.optimize(application, executorService);
         desugaredCallSites = converter.getDesugaredCallSites();
       } finally {
         timing.end();
       }
+
+      // At this point all code has been mapped according to the graph lens. We cannot remove the
+      // graph lens entirely, though, since it is needed for mapping all field and method signatures
+      // back to the original program.
+      timing.begin("AppliedGraphLens construction");
+      appView.setGraphLense(new AppliedGraphLens(appView, application.classes()));
+      timing.end();
 
       if (options.printCfg) {
         if (options.printCfgFile == null || options.printCfgFile.isEmpty()) {
@@ -527,9 +540,9 @@ public class R8 {
               .run();
         }
         if (whyAreYouKeepingConsumer != null) {
-          for (DexDefinition dexDefinition : mainDexRootSet.reasonAsked) {
+          for (DexReference reference : mainDexRootSet.reasonAsked) {
             whyAreYouKeepingConsumer.printWhyAreYouKeeping(
-                enqueuer.getGraphNode(dexDefinition), System.out);
+                enqueuer.getGraphNode(reference), System.out);
           }
         }
       }
@@ -569,9 +582,9 @@ public class R8 {
 
             // Print reasons on the application after pruning, so that we reflect the actual result.
             if (whyAreYouKeepingConsumer != null) {
-              for (DexDefinition dexDefinition : rootSet.reasonAsked) {
+              for (DexReference reference : rootSet.reasonAsked) {
                 whyAreYouKeepingConsumer.printWhyAreYouKeeping(
-                    enqueuer.getGraphNode(dexDefinition), System.out);
+                    enqueuer.getGraphNode(reference), System.out);
               }
             }
             // Remove annotations that refer to types that no longer exist.
@@ -632,7 +645,14 @@ public class R8 {
 
       // Validity checks.
       assert application.classes().stream().allMatch(DexClass::isValid);
-      assert rootSet.verifyKeptItemsAreKept(application, appView.appInfo(), options);
+      assert rootSet.verifyKeptItemsAreKept(application, appView.appInfo());
+      assert appView
+          .graphLense()
+          .verifyMappingToOriginalProgram(
+              application.classesWithDeterministicOrder(),
+              new ApplicationReader(inputApp.withoutMainDexList(), options, timing)
+                  .read(executorService),
+              appView.dexItemFactory());
 
       // Report synthetic rules (only for testing).
       // TODO(b/120959039): Move this to being reported through the graph consumer.

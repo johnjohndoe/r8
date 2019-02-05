@@ -160,7 +160,7 @@ public class IRConverter {
       InternalOptions options,
       Timing timing,
       CfgPrinter printer,
-      AppView<? extends AppInfoWithSubtyping> appView,
+      AppView<? extends AppInfoWithLiveness> appView,
       MainDexClasses mainDexClasses,
       RootSet rootSet) {
     assert appInfo != null;
@@ -180,8 +180,9 @@ public class IRConverter {
     this.stringConcatRewriter = new StringConcatRewriter(appInfo);
     this.lambdaRewriter = options.enableDesugaring ? new LambdaRewriter(this) : null;
     this.interfaceMethodRewriter =
-        (options.enableDesugaring && enableInterfaceMethodDesugaring())
-            ? new InterfaceMethodRewriter(this, options) : null;
+        options.isInterfaceMethodDesugaringEnabled()
+            ? new InterfaceMethodRewriter(appView, this, options)
+            : null;
     this.twrCloseResourceRewriter =
         (options.enableDesugaring && enableTwrCloseResourceDesugaring())
             ? new TwrCloseResourceRewriter(this) : null;
@@ -276,23 +277,13 @@ public class IRConverter {
    * Create an IR converter for processing methods with full program optimization enabled.
    */
   public IRConverter(
-      AppView<AppInfoWithSubtyping> appView,
+      AppView<? extends AppInfoWithLiveness> appView,
       InternalOptions options,
       Timing timing,
       CfgPrinter printer,
       MainDexClasses mainDexClasses,
       RootSet rootSet) {
     this(appView.appInfo(), options, timing, printer, appView, mainDexClasses, rootSet);
-  }
-
-  private boolean enableInterfaceMethodDesugaring() {
-    switch (options.interfaceMethodDesugaring) {
-      case Off:
-        return false;
-      case Auto:
-        return !options.canUseDefaultAndStaticInterfaceMethods();
-    }
-    throw new Unreachable();
   }
 
   private boolean enableTwrCloseResourceDesugaring() {
@@ -327,10 +318,11 @@ public class IRConverter {
     );
   }
 
-  private void removeLambdaDeserializationMethods() {
+  private boolean removeLambdaDeserializationMethods() {
     if (lambdaRewriter != null) {
-      lambdaRewriter.removeLambdaDeserializationMethods(appInfo.classes());
+      return lambdaRewriter.removeLambdaDeserializationMethods(appInfo.classes());
     }
+    return false;
   }
 
   private void synthesizeLambdaClasses(Builder<?> builder, ExecutorService executorService)
@@ -538,8 +530,13 @@ public class IRConverter {
 
   public DexApplication optimize(DexApplication application, ExecutorService executorService)
       throws ExecutionException {
+    if (options.enableTreeShaking) {
+      assert !removeLambdaDeserializationMethods();
+    } else {
+      removeLambdaDeserializationMethods();
+    }
+
     computeReachabilitySensitivity(application);
-    removeLambdaDeserializationMethods();
     collectLambdaMergingCandidates(application);
     collectStaticizerCandidates(application);
 
@@ -1190,8 +1187,11 @@ public class IRConverter {
     }
     if (paramsCheckedForNull.length() > 0) {
       // Check if collected information conforms to non-null parameter hints in Kotlin metadata.
+      // These hints are on the original holder. To find the original holder, we first find the
+      // original method signature (this could have changed as a result of, for example, class
+      // merging). Then, we find the type that now corresponds to the the original holder.
       DexMethod originalSignature = graphLense().getOriginalMethodSignature(method.method);
-      DexClass originalHolder = definitionFor(originalSignature.holder);
+      DexClass originalHolder = definitionFor(graphLense().lookupType(originalSignature.holder));
       if (originalHolder.hasKotlinInfo()) {
         KotlinInfo kotlinInfo = originalHolder.getKotlinInfo();
         if (kotlinInfo.hasNonNullParameterHints()) {

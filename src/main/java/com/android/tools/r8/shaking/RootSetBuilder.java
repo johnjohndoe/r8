@@ -3,6 +3,9 @@
 // BSD-style license that can be found in the LICENSE file.
 package com.android.tools.r8.shaking;
 
+import static com.android.tools.r8.graph.GraphLense.rewriteMutableReferenceKeys;
+import static com.android.tools.r8.graph.GraphLense.rewriteReferenceKeys;
+
 import com.android.tools.r8.dex.Constants;
 import com.android.tools.r8.errors.Unreachable;
 import com.android.tools.r8.graph.AppInfo;
@@ -22,11 +25,11 @@ import com.android.tools.r8.graph.DexProgramClass;
 import com.android.tools.r8.graph.DexReference;
 import com.android.tools.r8.graph.DexType;
 import com.android.tools.r8.graph.DirectMappedDexApplication;
+import com.android.tools.r8.graph.GraphLense;
 import com.android.tools.r8.logging.Log;
 import com.android.tools.r8.shaking.Enqueuer.AppInfoWithLiveness;
 import com.android.tools.r8.utils.InternalOptions;
 import com.android.tools.r8.utils.MethodSignatureEquivalence;
-import com.android.tools.r8.utils.OffOrAuto;
 import com.android.tools.r8.utils.StringDiagnostic;
 import com.android.tools.r8.utils.ThreadUtils;
 import com.google.common.base.Equivalence.Wrapper;
@@ -53,6 +56,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -61,14 +65,14 @@ public class RootSetBuilder {
   private final AppView<? extends AppInfo> appView;
   private final DirectMappedDexApplication application;
   private final Iterable<? extends ProguardConfigurationRule> rules;
-  private final Map<DexDefinition, Set<ProguardKeepRule>> noShrinking = new IdentityHashMap<>();
-  private final Set<DexDefinition> noOptimization = Sets.newIdentityHashSet();
-  private final Set<DexDefinition> noObfuscation = Sets.newIdentityHashSet();
-  private final LinkedHashMap<DexDefinition, DexDefinition> reasonAsked = new LinkedHashMap<>();
-  private final Set<DexDefinition> keepPackageName = Sets.newIdentityHashSet();
+  private final Map<DexReference, Set<ProguardKeepRule>> noShrinking = new IdentityHashMap<>();
+  private final Set<DexReference> noOptimization = Sets.newIdentityHashSet();
+  private final Set<DexReference> noObfuscation = Sets.newIdentityHashSet();
+  private final LinkedHashMap<DexReference, DexReference> reasonAsked = new LinkedHashMap<>();
+  private final Set<DexReference> keepPackageName = Sets.newIdentityHashSet();
   private final Set<ProguardConfigurationRule> rulesThatUseExtendsOrImplementsWrong =
       Sets.newIdentityHashSet();
-  private final Set<DexDefinition> checkDiscarded = Sets.newIdentityHashSet();
+  private final Set<DexReference> checkDiscarded = Sets.newIdentityHashSet();
   private final Set<DexMethod> alwaysInline = Sets.newIdentityHashSet();
   private final Set<DexMethod> forceInline = Sets.newIdentityHashSet();
   private final Set<DexMethod> neverInline = Sets.newIdentityHashSet();
@@ -76,10 +80,10 @@ public class RootSetBuilder {
   private final Set<DexMethod> keepUnusedArguments = Sets.newIdentityHashSet();
   private final Set<DexType> neverClassInline = Sets.newIdentityHashSet();
   private final Set<DexType> neverMerge = Sets.newIdentityHashSet();
-  private final Map<DexDefinition, Map<DexDefinition, Set<ProguardKeepRule>>> dependentNoShrinking =
+  private final Map<DexReference, Map<DexReference, Set<ProguardKeepRule>>> dependentNoShrinking =
       new IdentityHashMap<>();
-  private final Map<DexDefinition, ProguardMemberRule> noSideEffects = new IdentityHashMap<>();
-  private final Map<DexDefinition, ProguardMemberRule> assumedValues = new IdentityHashMap<>();
+  private final Map<DexReference, ProguardMemberRule> noSideEffects = new IdentityHashMap<>();
+  private final Map<DexReference, ProguardMemberRule> assumedValues = new IdentityHashMap<>();
   private final Set<DexReference> identifierNameStrings = Sets.newIdentityHashSet();
   private final InternalOptions options;
 
@@ -863,11 +867,11 @@ public class RootSetBuilder {
     }
     // Keep the type if the item is also kept.
     dependentNoShrinking
-        .computeIfAbsent(item, x -> new IdentityHashMap<>())
-        .computeIfAbsent(definition, k -> new HashSet<>())
+        .computeIfAbsent(item.toReference(), x -> new IdentityHashMap<>())
+        .computeIfAbsent(type, k -> new HashSet<>())
         .add(context);
     // Unconditionally add to no-obfuscation, as that is only checked for surviving items.
-    noObfuscation.add(definition);
+    noObfuscation.add(type);
   }
 
   private void includeDescriptorClasses(DexDefinition item, ProguardKeepRule context) {
@@ -891,9 +895,28 @@ public class RootSetBuilder {
       ProguardMemberRule rule,
       DexDefinition precondition) {
     if (context instanceof ProguardKeepRule) {
-      if (item.isDexEncodedMethod() && item.asDexEncodedMethod().accessFlags.isSynthetic()) {
-        // Don't keep synthetic methods (see b/120971047 for additional details).
-        return;
+      if (item.isDexEncodedMethod()) {
+        DexEncodedMethod encodedMethod = item.asDexEncodedMethod();
+        if (encodedMethod.method.isLambdaDeserializeMethod(appView.dexItemFactory())) {
+          // Don't keep lambda deserialization methods.
+          return;
+        }
+        // If desugaring is enabled, private and static interface methods will be moved to a
+        // companion class. So we don't need to add them to the root set in the beginning.
+        if (options.isInterfaceMethodDesugaringEnabled()
+            && encodedMethod.hasCode()
+            && (encodedMethod.isPrivateMethod() || encodedMethod.isStaticMember())) {
+          DexClass holder = appView.appInfo().definitionFor(encodedMethod.method.getHolder());
+          if (holder != null && holder.isInterface()) {
+            if (rule.isSpecific()) {
+              options.reporter.warning(
+                  new StringDiagnostic(
+                      "The rule `" + rule + "` is ignored because the targeting interface method `"
+                          + encodedMethod.method.toSourceString() + "` will be desugared."));
+            }
+            return;
+          }
+        }
       }
 
       ProguardKeepRule keepRule = (ProguardKeepRule) context;
@@ -901,32 +924,32 @@ public class RootSetBuilder {
       if (!modifiers.allowsShrinking) {
         if (precondition != null) {
           dependentNoShrinking
-              .computeIfAbsent(precondition, x -> new IdentityHashMap<>())
-              .computeIfAbsent(item, i -> new HashSet<>())
+              .computeIfAbsent(precondition.toReference(), x -> new IdentityHashMap<>())
+              .computeIfAbsent(item.toReference(), i -> new HashSet<>())
               .add(keepRule);
         } else {
-          noShrinking.computeIfAbsent(item, i -> new HashSet<>()).add(keepRule);
+          noShrinking.computeIfAbsent(item.toReference(), i -> new HashSet<>()).add(keepRule);
         }
       }
       if (!modifiers.allowsOptimization) {
-        noOptimization.add(item);
+        noOptimization.add(item.toReference());
       }
       if (!modifiers.allowsObfuscation) {
-        noObfuscation.add(item);
+        noObfuscation.add(item.toReference());
       }
       if (modifiers.includeDescriptorClasses) {
         includeDescriptorClasses(item, keepRule);
       }
     } else if (context instanceof ProguardAssumeNoSideEffectRule) {
-      noSideEffects.put(item, rule);
+      noSideEffects.put(item.toReference(), rule);
     } else if (context instanceof ProguardWhyAreYouKeepingRule) {
-      reasonAsked.computeIfAbsent(item, i -> i);
+      reasonAsked.computeIfAbsent(item.toReference(), i -> i);
     } else if (context instanceof ProguardKeepPackageNamesRule) {
-      keepPackageName.add(item);
+      keepPackageName.add(item.toReference());
     } else if (context instanceof ProguardAssumeValuesRule) {
-      assumedValues.put(item, rule);
+      assumedValues.put(item.toReference(), rule);
     } else if (context instanceof ProguardCheckDiscardRule) {
-      checkDiscarded.add(item);
+      checkDiscarded.add(item.toReference());
     } else if (context instanceof InlineRule) {
       if (item.isDexEncodedMethod()) {
         switch (((InlineRule) context).getType()) {
@@ -982,12 +1005,12 @@ public class RootSetBuilder {
 
   public static class RootSet {
 
-    public final Map<DexDefinition, Set<ProguardKeepRule>> noShrinking;
-    public final Set<DexDefinition> noOptimization;
-    public final Set<DexDefinition> noObfuscation;
-    public final ImmutableList<DexDefinition> reasonAsked;
-    public final Set<DexDefinition> keepPackageName;
-    public final Set<DexDefinition> checkDiscarded;
+    public final Map<DexReference, Set<ProguardKeepRule>> noShrinking;
+    public final Set<DexReference> noOptimization;
+    public final Set<DexReference> noObfuscation;
+    public final ImmutableList<DexReference> reasonAsked;
+    public final Set<DexReference> keepPackageName;
+    public final Set<DexReference> checkDiscarded;
     public final Set<DexMethod> alwaysInline;
     public final Set<DexMethod> forceInline;
     public final Set<DexMethod> neverInline;
@@ -995,20 +1018,20 @@ public class RootSetBuilder {
     public final Set<DexMethod> keepUnusedArguments;
     public final Set<DexType> neverClassInline;
     public final Set<DexType> neverMerge;
-    public final Map<DexDefinition, ProguardMemberRule> noSideEffects;
-    public final Map<DexDefinition, ProguardMemberRule> assumedValues;
-    private final Map<DexDefinition, Map<DexDefinition, Set<ProguardKeepRule>>>
+    public final Map<DexReference, ProguardMemberRule> noSideEffects;
+    public final Map<DexReference, ProguardMemberRule> assumedValues;
+    private final Map<DexReference, Map<DexReference, Set<ProguardKeepRule>>>
         dependentNoShrinking;
     public final Set<DexReference> identifierNameStrings;
     public final Set<ProguardIfRule> ifRules;
 
     private RootSet(
-        Map<DexDefinition, Set<ProguardKeepRule>> noShrinking,
-        Set<DexDefinition> noOptimization,
-        Set<DexDefinition> noObfuscation,
-        ImmutableList<DexDefinition> reasonAsked,
-        Set<DexDefinition> keepPackageName,
-        Set<DexDefinition> checkDiscarded,
+        Map<DexReference, Set<ProguardKeepRule>> noShrinking,
+        Set<DexReference> noOptimization,
+        Set<DexReference> noObfuscation,
+        ImmutableList<DexReference> reasonAsked,
+        Set<DexReference> keepPackageName,
+        Set<DexReference> checkDiscarded,
         Set<DexMethod> alwaysInline,
         Set<DexMethod> forceInline,
         Set<DexMethod> neverInline,
@@ -1016,12 +1039,12 @@ public class RootSetBuilder {
         Set<DexMethod> keepUnusedArguments,
         Set<DexType> neverClassInline,
         Set<DexType> neverMerge,
-        Map<DexDefinition, ProguardMemberRule> noSideEffects,
-        Map<DexDefinition, ProguardMemberRule> assumedValues,
-        Map<DexDefinition, Map<DexDefinition, Set<ProguardKeepRule>>> dependentNoShrinking,
+        Map<DexReference, ProguardMemberRule> noSideEffects,
+        Map<DexReference, ProguardMemberRule> assumedValues,
+        Map<DexReference, Map<DexReference, Set<ProguardKeepRule>>> dependentNoShrinking,
         Set<DexReference> identifierNameStrings,
         Set<ProguardIfRule> ifRules) {
-      this.noShrinking = Collections.unmodifiableMap(noShrinking);
+      this.noShrinking = noShrinking;
       this.noOptimization = noOptimization;
       this.noObfuscation = noObfuscation;
       this.reasonAsked = reasonAsked;
@@ -1034,40 +1057,121 @@ public class RootSetBuilder {
       this.keepUnusedArguments = keepUnusedArguments;
       this.neverClassInline = neverClassInline;
       this.neverMerge = Collections.unmodifiableSet(neverMerge);
-      this.noSideEffects = Collections.unmodifiableMap(noSideEffects);
-      this.assumedValues = Collections.unmodifiableMap(assumedValues);
+      this.noSideEffects = noSideEffects;
+      this.assumedValues = assumedValues;
       this.dependentNoShrinking = dependentNoShrinking;
       this.identifierNameStrings = Collections.unmodifiableSet(identifierNameStrings);
       this.ifRules = Collections.unmodifiableSet(ifRules);
     }
 
+    private RootSet(RootSet previous, GraphLense lense) {
+      this.noShrinking = rewriteMutableReferenceKeys(previous.noShrinking, lense::lookupReference);
+      this.noOptimization = lense.rewriteMutableReferencesConservatively(previous.noOptimization);
+      this.noObfuscation = lense.rewriteMutableReferencesConservatively(previous.noObfuscation);
+      this.reasonAsked = lense.rewriteReferencesConservatively(previous.reasonAsked);
+      this.keepPackageName = lense.rewriteReferencesConservatively(previous.keepPackageName);
+      this.checkDiscarded = lense.rewriteReferencesConservatively(previous.checkDiscarded);
+      this.alwaysInline = lense.rewriteMethodsConservatively(previous.alwaysInline);
+      this.forceInline = lense.rewriteMethodsConservatively(previous.forceInline);
+      this.neverInline = lense.rewriteMutableMethodsConservatively(previous.neverInline);
+      this.keepConstantArguments =
+          lense.rewriteMutableMethodsConservatively(previous.keepConstantArguments);
+      this.keepUnusedArguments =
+          lense.rewriteMutableMethodsConservatively(previous.keepUnusedArguments);
+      this.neverClassInline = lense.rewriteMutableTypesConservatively(previous.neverClassInline);
+      this.neverMerge = lense.rewriteTypesConservatively(previous.neverMerge);
+      this.noSideEffects =
+          rewriteMutableReferenceKeys(previous.noSideEffects, lense::lookupReference);
+      this.assumedValues =
+          rewriteMutableReferenceKeys(previous.assumedValues, lense::lookupReference);
+      this.dependentNoShrinking =
+          rewriteDependentReferenceKeys(previous.dependentNoShrinking, lense::lookupReference);
+      this.identifierNameStrings =
+          lense.rewriteReferencesConservatively(previous.identifierNameStrings);
+      this.ifRules = Collections.unmodifiableSet(previous.ifRules);
+    }
+
+    public RootSet rewrittenWithLense(GraphLense lense) {
+      return new RootSet(this, lense);
+    }
+
+    private static <T extends DexReference, S> Map<T, Map<T, S>> rewriteDependentReferenceKeys(
+        Map<T, Map<T, S>> original, Function<T, T> rewrite) {
+      Map<T, Map<T, S>> result = new IdentityHashMap<>();
+      for (T item : original.keySet()) {
+        result.put(rewrite.apply(item), rewriteReferenceKeys(original.get(item), rewrite));
+      }
+      return result;
+    }
+
+    void addConsequentRootSet(ConsequentRootSet consequentRootSet) {
+      neverInline.addAll(consequentRootSet.neverInline);
+      neverClassInline.addAll(consequentRootSet.neverClassInline);
+      noOptimization.addAll(consequentRootSet.noOptimization);
+      noObfuscation.addAll(consequentRootSet.noObfuscation);
+      addDependentItems(consequentRootSet.dependentNoShrinking);
+    }
+
     // Add dependent items that depend on -if rules.
-    void addDependentItems(
-        Map<DexDefinition, Map<DexDefinition, Set<ProguardKeepRule>>> dependentItems) {
+    private void addDependentItems(
+        Map<DexReference, Map<DexReference, Set<ProguardKeepRule>>> dependentItems) {
       dependentItems.forEach(
-          (def, dependence) ->
+          (reference, dependence) ->
               dependentNoShrinking
-                  .computeIfAbsent(def, x -> new IdentityHashMap<>())
+                  .computeIfAbsent(reference, x -> new IdentityHashMap<>())
                   .putAll(dependence));
     }
 
-    Map<DexDefinition, Set<ProguardKeepRule>> getDependentItems(DexDefinition item) {
-      return Collections
-          .unmodifiableMap(dependentNoShrinking.getOrDefault(item, Collections.emptyMap()));
+    Map<DexReference, Set<ProguardKeepRule>> getDependentItems(DexDefinition item) {
+      return Collections.unmodifiableMap(
+          dependentNoShrinking.getOrDefault(item.toReference(), Collections.emptyMap()));
+    }
+
+    public void copy(DexReference original, DexReference rewritten) {
+      if (noShrinking.containsKey(original)) {
+        noShrinking.put(rewritten, noShrinking.get(original));
+      }
+      if (noOptimization.contains(original)) {
+        noOptimization.add(rewritten);
+      }
+      if (noObfuscation.contains(original)) {
+        noObfuscation.add(rewritten);
+      }
+      if (noSideEffects.containsKey(original)) {
+        noSideEffects.put(rewritten, noSideEffects.get(original));
+      }
+      if (assumedValues.containsKey(original)) {
+        assumedValues.put(rewritten, assumedValues.get(original));
+      }
+    }
+
+    public void prune(DexReference reference) {
+      noShrinking.remove(reference);
+      noOptimization.remove(reference);
+      noObfuscation.remove(reference);
+      noSideEffects.remove(reference);
+      assumedValues.remove(reference);
+    }
+
+    public void move(DexReference original, DexReference rewritten) {
+      copy(original, rewritten);
+      prune(original);
     }
 
     public boolean verifyKeptFieldsAreAccessedAndLive(AppInfoWithLiveness appInfo) {
-      for (DexDefinition definition : noShrinking.keySet()) {
-        if (definition.isDexEncodedField()) {
-          DexEncodedField field = definition.asDexEncodedField();
-          if (field.isStatic() || isKeptDirectlyOrIndirectly(field.field.clazz, appInfo)) {
+      for (DexReference reference : noShrinking.keySet()) {
+        if (reference.isDexField()) {
+          DexField field = reference.asDexField();
+          DexEncodedField encodedField = appInfo.definitionFor(field);
+          if (encodedField != null
+              && (encodedField.isStatic() || isKeptDirectlyOrIndirectly(field.clazz, appInfo))) {
             // TODO(b/121354886): Enable asserts for reads and writes.
-            /*assert appInfo.fieldsRead.contains(field.field)
-                : "Expected kept field `" + field.field.toSourceString() + "` to be read";
-            assert appInfo.fieldsWritten.contains(field.field)
-                : "Expected kept field `" + field.field.toSourceString() + "` to be written";*/
-            assert appInfo.liveFields.contains(field.field)
-                : "Expected kept field `" + field.field.toSourceString() + "` to be live";
+            /*assert appInfo.fieldsRead.contains(field)
+                : "Expected kept field `" + field.toSourceString() + "` to be read";
+            assert appInfo.fieldsWritten.contains(field)
+                : "Expected kept field `" + field.toSourceString() + "` to be written";*/
+            assert appInfo.liveFields.contains(field)
+                : "Expected kept field `" + field.toSourceString() + "` to be live";
           }
         }
       }
@@ -1075,17 +1179,17 @@ public class RootSetBuilder {
     }
 
     public boolean verifyKeptMethodsAreTargetedAndLive(AppInfoWithLiveness appInfo) {
-      for (DexDefinition definition : noShrinking.keySet()) {
-        if (definition.isDexEncodedMethod()) {
-          DexEncodedMethod method = definition.asDexEncodedMethod();
-          assert appInfo.targetedMethods.contains(method.method)
-              : "Expected kept method `" + method.method.toSourceString() + "` to be targeted";
-
-          if (!method.accessFlags.isAbstract()
-              && isKeptDirectlyOrIndirectly(method.method.holder, appInfo)) {
-            assert appInfo.liveMethods.contains(method.method)
+      for (DexReference reference : noShrinking.keySet()) {
+        if (reference.isDexMethod()) {
+          DexMethod method = reference.asDexMethod();
+          assert appInfo.targetedMethods.contains(method)
+              : "Expected kept method `" + method.toSourceString() + "` to be targeted";
+          DexEncodedMethod encodedMethod = appInfo.definitionFor(method);
+          if (!encodedMethod.accessFlags.isAbstract()
+              && isKeptDirectlyOrIndirectly(method.holder, appInfo)) {
+            assert appInfo.liveMethods.contains(method)
                 : "Expected non-abstract kept method `"
-                    + method.method.toSourceString()
+                    + method.toSourceString()
                     + "` to be live";
           }
         }
@@ -1094,23 +1198,23 @@ public class RootSetBuilder {
     }
 
     public boolean verifyKeptTypesAreLive(AppInfoWithLiveness appInfo) {
-      for (DexDefinition definition : noShrinking.keySet()) {
-        if (definition.isDexClass()) {
-          DexClass clazz = definition.asDexClass();
-          assert appInfo.liveTypes.contains(clazz.type)
-              : "Expected kept type `" + clazz.type.toSourceString() + "` to be live";
+      for (DexReference reference : noShrinking.keySet()) {
+        if (reference.isDexType()) {
+          DexType type = reference.asDexType();
+          assert appInfo.liveTypes.contains(type)
+              : "Expected kept type `" + type.toSourceString() + "` to be live";
         }
       }
       return true;
     }
 
     private boolean isKeptDirectlyOrIndirectly(DexType type, AppInfoWithLiveness appInfo) {
+      if (noShrinking.containsKey(type)) {
+        return true;
+      }
       DexClass clazz = appInfo.definitionFor(type);
       if (clazz == null) {
         return false;
-      }
-      if (noShrinking.containsKey(clazz)) {
-        return true;
       }
       if (clazz.superType != null) {
         return isKeptDirectlyOrIndirectly(clazz.superType, appInfo);
@@ -1118,49 +1222,39 @@ public class RootSetBuilder {
       return false;
     }
 
-    public boolean verifyKeptItemsAreKept(
-        DexApplication application, AppInfo appInfo, InternalOptions options) {
-      if (options.getProguardConfiguration().hasApplyMappingFile()) {
-        // TODO(b/121295633): Root set is obsolete after mapping has been applied.
-        return true;
-      }
-
-      boolean isInterfaceMethodDesugaringEnabled =
-          options.enableDesugaring
-              && options.interfaceMethodDesugaring == OffOrAuto.Auto
-              && !options.canUseDefaultAndStaticInterfaceMethods();
-
+    public boolean verifyKeptItemsAreKept(DexApplication application, AppInfo appInfo) {
       Set<DexReference> pinnedItems =
           appInfo.hasLiveness() ? appInfo.withLiveness().pinnedItems : null;
 
       // Create a mapping from each required type to the set of required members on that type.
-      Map<DexType, Set<DexDefinition>> requiredDefinitionsPerType = new IdentityHashMap<>();
-      for (DexDefinition definition : noShrinking.keySet()) {
+      Map<DexType, Set<DexReference>> requiredReferencesPerType = new IdentityHashMap<>();
+      for (DexReference reference : noShrinking.keySet()) {
         // Check that `pinnedItems` is a super set of the root set.
-        assert pinnedItems == null || pinnedItems.contains(definition.toReference());
-        if (definition.isDexClass()) {
-          DexType type = definition.toReference().asDexType();
-          requiredDefinitionsPerType.putIfAbsent(type, Sets.newIdentityHashSet());
+        assert pinnedItems == null || pinnedItems.contains(reference)
+            : "Expected reference `" + reference.toSourceString() + "` to be pinned";
+        if (reference.isDexType()) {
+          DexType type = reference.asDexType();
+          requiredReferencesPerType.putIfAbsent(type, Sets.newIdentityHashSet());
         } else {
-          assert definition.isDexEncodedField() || definition.isDexEncodedMethod();
-          Descriptor<?, ?> descriptor = definition.toReference().asDescriptor();
-          requiredDefinitionsPerType
+          assert reference.isDexField() || reference.isDexMethod();
+          Descriptor<?, ?> descriptor = reference.asDescriptor();
+          requiredReferencesPerType
               .computeIfAbsent(descriptor.getHolder(), key -> Sets.newIdentityHashSet())
-              .add(definition);
+              .add(reference);
         }
       }
 
       // Run through each class in the program and check that it has members it must have.
       for (DexProgramClass clazz : application.classes()) {
-        Set<DexDefinition> requiredDefinitions =
-            requiredDefinitionsPerType.getOrDefault(clazz.type, ImmutableSet.of());
+        Set<DexReference> requiredReferences =
+            requiredReferencesPerType.getOrDefault(clazz.type, ImmutableSet.of());
 
         Set<DexField> fields = null;
         Set<DexMethod> methods = null;
 
-        for (DexDefinition requiredDefinition : requiredDefinitions) {
-          if (requiredDefinition.isDexEncodedField()) {
-            DexEncodedField requiredField = requiredDefinition.asDexEncodedField();
+        for (DexReference requiredReference : requiredReferences) {
+          if (requiredReference.isDexField()) {
+            DexField requiredField = requiredReference.asDexField();
             if (fields == null) {
               // Create a Set of the fields to avoid quadratic behavior.
               fields =
@@ -1168,16 +1262,12 @@ public class RootSetBuilder {
                       .map(DexEncodedField::getKey)
                       .collect(Collectors.toSet());
             }
-            assert fields.contains(requiredField.field);
-          } else if (requiredDefinition.isDexEncodedMethod()) {
-            DexEncodedMethod requiredMethod = requiredDefinition.asDexEncodedMethod();
-            if (isInterfaceMethodDesugaringEnabled) {
-              if (clazz.isInterface() && requiredMethod.hasCode()) {
-                // TODO(b/121240523): Ideally, these default interface methods should not be in the
-                // root set.
-                continue;
-              }
-            }
+            assert fields.contains(requiredField)
+                : "Expected field `"
+                    + requiredField.toSourceString()
+                    + "` from the root set to be present";
+          } else if (requiredReference.isDexMethod()) {
+            DexMethod requiredMethod = requiredReference.asDexMethod();
             if (methods == null) {
               // Create a Set of the methods to avoid quadratic behavior.
               methods =
@@ -1185,21 +1275,24 @@ public class RootSetBuilder {
                       .map(DexEncodedMethod::getKey)
                       .collect(Collectors.toSet());
             }
-            assert methods.contains(requiredMethod.method);
+            assert methods.contains(requiredMethod)
+                : "Expected method `"
+                    + requiredMethod.toSourceString()
+                    + "` from the root set to be present";
           } else {
             assert false;
           }
         }
-        requiredDefinitionsPerType.remove(clazz.type);
+        requiredReferencesPerType.remove(clazz.type);
       }
 
       // If the map is non-empty, then a type in the root set was not in the application.
-      if (!requiredDefinitionsPerType.isEmpty()) {
-        DexType type = requiredDefinitionsPerType.keySet().iterator().next();
+      if (!requiredReferencesPerType.isEmpty()) {
+        DexType type = requiredReferencesPerType.keySet().iterator().next();
         DexClass clazz = application.definitionFor(type);
         assert clazz == null || clazz.isProgramClass()
             : "Unexpected library type in root set: `" + type + "`";
-        assert requiredDefinitionsPerType.isEmpty()
+        assert requiredReferencesPerType.isEmpty()
             : "Expected type `" + type.toSourceString() + "` to be present";
       }
 
@@ -1225,7 +1318,7 @@ public class RootSetBuilder {
 
       builder.append("\n\nNo Shrinking:");
       noShrinking.keySet().stream()
-          .sorted(Comparator.comparing(DexDefinition::toSourceString))
+          .sorted(Comparator.comparing(DexReference::toSourceString))
           .forEach(a -> builder
               .append("\n").append(a.toSourceString()).append(" ").append(noShrinking.get(a)));
       builder.append("\n");
@@ -1237,18 +1330,18 @@ public class RootSetBuilder {
   static class ConsequentRootSet {
     final Set<DexMethod> neverInline;
     final Set<DexType> neverClassInline;
-    final Map<DexDefinition, Set<ProguardKeepRule>> noShrinking;
-    final Set<DexDefinition> noOptimization;
-    final Set<DexDefinition> noObfuscation;
-    final Map<DexDefinition, Map<DexDefinition, Set<ProguardKeepRule>>> dependentNoShrinking;
+    final Map<DexReference, Set<ProguardKeepRule>> noShrinking;
+    final Set<DexReference> noOptimization;
+    final Set<DexReference> noObfuscation;
+    final Map<DexReference, Map<DexReference, Set<ProguardKeepRule>>> dependentNoShrinking;
 
     private ConsequentRootSet(
         Set<DexMethod> neverInline,
         Set<DexType> neverClassInline,
-        Map<DexDefinition, Set<ProguardKeepRule>> noShrinking,
-        Set<DexDefinition> noOptimization,
-        Set<DexDefinition> noObfuscation,
-        Map<DexDefinition, Map<DexDefinition, Set<ProguardKeepRule>>> dependentNoShrinking) {
+        Map<DexReference, Set<ProguardKeepRule>> noShrinking,
+        Set<DexReference> noOptimization,
+        Set<DexReference> noObfuscation,
+        Map<DexReference, Map<DexReference, Set<ProguardKeepRule>>> dependentNoShrinking) {
       this.neverInline = Collections.unmodifiableSet(neverInline);
       this.neverClassInline = Collections.unmodifiableSet(neverClassInline);
       this.noShrinking = Collections.unmodifiableMap(noShrinking);

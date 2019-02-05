@@ -1889,7 +1889,7 @@ public class CodeRewriter {
             String name = null;
             if (invokedMethod == appInfo.dexItemFactory.classMethods.getName) {
               if (code.options.enableMinification
-                  && !converter.rootSet.noObfuscation.contains(holder)) {
+                  && !converter.rootSet.noObfuscation.contains(holderType)) {
                 deferred = new DexItemBasedValueString(
                     holderType, new ClassNameComputationInfo(NAME));
               } else {
@@ -1899,7 +1899,7 @@ public class CodeRewriter {
               // TODO(b/119426668): desugar Type#getTypeName
             } else if (invokedMethod == appInfo.dexItemFactory.classMethods.getCanonicalName) {
               if (code.options.enableMinification
-                  && !converter.rootSet.noObfuscation.contains(holder)) {
+                  && !converter.rootSet.noObfuscation.contains(holderType)) {
                 deferred = new DexItemBasedValueString(
                     holderType, new ClassNameComputationInfo(CANONICAL_NAME));
               } else {
@@ -1907,7 +1907,7 @@ public class CodeRewriter {
               }
             } else if (invokedMethod == appInfo.dexItemFactory.classMethods.getSimpleName) {
               if (code.options.enableMinification
-                  && !converter.rootSet.noObfuscation.contains(holder)) {
+                  && !converter.rootSet.noObfuscation.contains(holderType)) {
                 deferred = new DexItemBasedValueString(
                     holderType, new ClassNameComputationInfo(SIMPLE_NAME));
               } else {

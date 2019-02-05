@@ -45,12 +45,10 @@ import java.util.concurrent.ExecutorService;
  * lambda class generation, and instruction patching.
  */
 public class LambdaRewriter {
-  private static final String SERIALIZED_LAMBDA_TYPE_DESCR = "Ljava/lang/invoke/SerializedLambda;";
-
-  private static final String DESERIALIZE_LAMBDA_METHOD_NAME = "$deserializeLambda$";
 
   // Public for testing.
   public static final String LAMBDA_CLASS_NAME_PREFIX = "-$$Lambda$";
+  public static final String LAMBDA_GROUP_CLASS_NAME_PREFIX = "-$$LambdaGroup$";
   static final String EXPECTED_LAMBDA_METHOD_PREFIX = "lambda$";
   static final String LAMBDA_INSTANCE_FIELD_NAME = "INSTANCE";
 
@@ -63,9 +61,6 @@ public class LambdaRewriter {
   final DexString constructorName;
   final DexString classConstructorName;
   final DexString instanceFieldName;
-
-  final DexString deserializeLambdaMethodName;
-  final DexProto deserializeLambdaMethodProto;
 
   final BiMap<DexMethod, DexMethod> methodMapping = HashBiMap.create();
 
@@ -96,10 +91,6 @@ public class LambdaRewriter {
     this.objectInitMethod = factory.createMethod(factory.objectType, initProto, constructorName);
     this.classConstructorName = factory.createString(Constants.CLASS_INITIALIZER_NAME);
     this.instanceFieldName = factory.createString(LAMBDA_INSTANCE_FIELD_NAME);
-
-    this.deserializeLambdaMethodName = factory.createString(DESERIALIZE_LAMBDA_METHOD_NAME);
-    this.deserializeLambdaMethodProto = factory.createProto(
-        factory.objectType, factory.createType(SERIALIZED_LAMBDA_TYPE_DESCR));
   }
 
   /**
@@ -136,7 +127,8 @@ public class LambdaRewriter {
   }
 
   /** Remove lambda deserialization methods. */
-  public void removeLambdaDeserializationMethods(Iterable<DexProgramClass> classes) {
+  public boolean removeLambdaDeserializationMethods(Iterable<DexProgramClass> classes) {
+    boolean anyRemoved = false;
     for (DexProgramClass clazz : classes) {
       // Search for a lambda deserialization method and remove it if found.
       DexEncodedMethod[] directMethods = clazz.directMethods();
@@ -145,8 +137,7 @@ public class LambdaRewriter {
         for (int i = 0; i < methodCount; i++) {
           DexEncodedMethod encoded = directMethods[i];
           DexMethod method = encoded.method;
-          if (method.name == deserializeLambdaMethodName &&
-              method.proto == deserializeLambdaMethodProto) {
+          if (method.isLambdaDeserializeMethod(appInfo.dexItemFactory)) {
             assert encoded.accessFlags.isStatic();
             assert encoded.accessFlags.isSynthetic();
 
@@ -155,12 +146,15 @@ public class LambdaRewriter {
             System.arraycopy(directMethods, i + 1, newMethods, i, methodCount - i - 1);
             clazz.setDirectMethods(newMethods);
 
+            anyRemoved = true;
+
             // We assume there is only one such method in the class.
             break;
           }
         }
       }
     }
+    return anyRemoved;
   }
 
   /**
