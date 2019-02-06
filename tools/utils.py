@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import zipfile
 
 ANDROID_JAR = 'third_party/android_jar/lib-v{api}/android.jar'
 TOOLS_DIR = os.path.abspath(os.path.normpath(os.path.join(__file__, '..')))
@@ -308,3 +309,9 @@ def get_android_jar(api):
 
 def is_bot():
   return 'BUILDBOT_BUILDERNAME' in os.environ
+
+
+def uncompressed_size(path):
+  return sum(z.file_size for z in zipfile.ZipFile(path).infolist())
+
+
