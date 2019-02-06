@@ -297,7 +297,11 @@ public class UninstantiatedTypeOptimization {
           removedArgumentsInfo = new ArrayList<>();
         }
         removedArgumentsInfo.add(
-            RemovedArgumentInfo.builder().setArgumentIndex(i + offset).setIsAlwaysNull().build());
+            RemovedArgumentInfo.builder()
+                .setArgumentIndex(i + offset)
+                .setIsAlwaysNull()
+                .setType(type)
+                .build());
       }
     }
     return removedArgumentsInfo != null

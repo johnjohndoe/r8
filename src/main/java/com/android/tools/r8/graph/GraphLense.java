@@ -79,6 +79,7 @@ public abstract class GraphLense {
 
         private int argumentIndex = -1;
         private boolean isAlwaysNull = false;
+        private DexType type = null;
 
         public Builder setArgumentIndex(int argumentIndex) {
           this.argumentIndex = argumentIndex;
@@ -90,18 +91,26 @@ public abstract class GraphLense {
           return this;
         }
 
+        public Builder setType(DexType type) {
+          this.type = type;
+          return this;
+        }
+
         public RemovedArgumentInfo build() {
           assert argumentIndex >= 0;
-          return new RemovedArgumentInfo(argumentIndex, isAlwaysNull);
+          assert type != null;
+          return new RemovedArgumentInfo(argumentIndex, isAlwaysNull, type);
         }
       }
 
       private final int argumentIndex;
       private final boolean isAlwaysNull;
+      private final DexType type;
 
-      private RemovedArgumentInfo(int argumentIndex, boolean isAlwaysNull) {
+      private RemovedArgumentInfo(int argumentIndex, boolean isAlwaysNull, DexType type) {
         this.argumentIndex = argumentIndex;
         this.isAlwaysNull = isAlwaysNull;
+        this.type = type;
       }
 
       public static Builder builder() {
@@ -110,6 +119,10 @@ public abstract class GraphLense {
 
       public int getArgumentIndex() {
         return argumentIndex;
+      }
+
+      public DexType getType() {
+        return type;
       }
 
       public boolean isAlwaysNull() {
@@ -122,7 +135,7 @@ public abstract class GraphLense {
 
       public RemovedArgumentInfo withArgumentIndex(int argumentIndex) {
         return this.argumentIndex != argumentIndex
-            ? new RemovedArgumentInfo(argumentIndex, isAlwaysNull)
+            ? new RemovedArgumentInfo(argumentIndex, isAlwaysNull, type)
             : this;
       }
     }
@@ -788,8 +801,8 @@ public abstract class GraphLense {
    * <p>Subclasses can override the lookup methods.
    *
    * <p>For method mapping where invocation type can change just override {@link
-   * #mapInvocationType(DexMethod, DexMethod, DexMethod, Type)} if the default name mapping applies,
-   * and only invocation type might need to change.
+   * #mapInvocationType(DexMethod, DexMethod, Type)} if the default name mapping applies, and only
+   * invocation type might need to change.
    */
   public static class NestedGraphLense extends GraphLense {
 
