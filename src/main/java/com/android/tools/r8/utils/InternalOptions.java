@@ -20,15 +20,18 @@ import com.android.tools.r8.graph.DexItemFactory;
 import com.android.tools.r8.graph.DexMethod;
 import com.android.tools.r8.graph.DexType;
 import com.android.tools.r8.ir.optimize.Inliner;
+import com.android.tools.r8.naming.InterfaceMethodNameMinifier;
 import com.android.tools.r8.origin.Origin;
 import com.android.tools.r8.shaking.ProguardConfiguration;
 import com.android.tools.r8.shaking.ProguardConfigurationRule;
 import com.android.tools.r8.utils.IROrdering.IdentityIROrdering;
 import com.android.tools.r8.utils.IROrdering.NondeterministicIROrdering;
+import com.google.common.base.Equivalence.Wrapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -218,6 +221,9 @@ public class InternalOptions {
   }
 
   public Set<String> extensiveLoggingFilter = getExtensiveLoggingFilter();
+  public Set<String> extensiveInterfaceMethodMinifierLoggingFilter =
+      getExtensiveInterfaceMethodMinifierLoggingFilter();
+
   public List<String> methodsFilter = ImmutableList.of();
   public int minApiLevel = AndroidApiLevel.getDefault().getLevel();
   // Skipping min_api check and compiling an intermediate result intended for later merging.
@@ -278,6 +284,19 @@ public class InternalOptions {
 
   private static Set<String> getExtensiveLoggingFilter() {
     String property = System.getProperty("com.android.tools.r8.extensiveLoggingFilter");
+    if (property != null) {
+      ImmutableSet.Builder<String> builder = ImmutableSet.builder();
+      for (String method : property.split(";")) {
+        builder.add(method);
+      }
+      return builder.build();
+    }
+    return ImmutableSet.of();
+  }
+
+  private static Set<String> getExtensiveInterfaceMethodMinifierLoggingFilter() {
+    String property =
+        System.getProperty("com.android.tools.r8.extensiveInterfaceMethodMinifierLoggingFilter");
     if (property != null) {
       ImmutableSet.Builder<String> builder = ImmutableSet.builder();
       for (String method : property.split(";")) {
@@ -532,6 +551,21 @@ public class InternalOptions {
     public boolean noLocalsTableOnInput = false;
     public boolean forceNameReflectionOptimization = false;
     public boolean disallowLoadStoreOptimization = false;
+
+    public MinifierTestingOptions minifier = new MinifierTestingOptions();
+
+    public static class MinifierTestingOptions {
+
+      public Comparator<DexMethod> interfaceMethodOrdering = null;
+
+      public Comparator<Wrapper<DexMethod>> createInterfaceMethodOrdering(
+          InterfaceMethodNameMinifier minifier) {
+        if (interfaceMethodOrdering != null) {
+          return (a, b) -> interfaceMethodOrdering.compare(a.get(), b.get());
+        }
+        return minifier.createDefaultInterfaceMethodOrdering();
+      }
+    }
   }
 
   private boolean hasMinApi(AndroidApiLevel level) {

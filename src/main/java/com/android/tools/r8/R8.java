@@ -611,15 +611,17 @@ public class R8 {
         new DiscardedChecker(rootSet, application, options).run();
       }
 
-      timing.begin("Minification");
-      // If we did not have keep rules, everything will be marked as keep, so no minification
-      // will happen. Just avoid the overhead.
-      NamingLens namingLens =
-          options.enableMinification
-              ? new Minifier(appView.appInfo().withLiveness(), rootSet, desugaredCallSites, options)
-                  .run(timing)
-              : NamingLens.getIdentityLens();
-      timing.end();
+      // Perform minification.
+      NamingLens namingLens;
+      if (options.enableMinification) {
+        timing.begin("Minification");
+        namingLens =
+            new Minifier(appView.appInfo().withLiveness(), rootSet, desugaredCallSites, options)
+                .run(timing);
+        timing.end();
+      } else {
+        namingLens = NamingLens.getIdentityLens();
+      }
 
       ProguardMapSupplier proguardMapSupplier;
 
