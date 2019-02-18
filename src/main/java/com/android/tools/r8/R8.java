@@ -11,7 +11,9 @@ import com.android.tools.r8.dex.Marker;
 import com.android.tools.r8.dex.Marker.Tool;
 import com.android.tools.r8.errors.CompilationError;
 import com.android.tools.r8.experimental.graphinfo.GraphConsumer;
+import com.android.tools.r8.graph.AppInfo;
 import com.android.tools.r8.graph.AppInfoWithSubtyping;
+import com.android.tools.r8.graph.AppServices;
 import com.android.tools.r8.graph.AppView;
 import com.android.tools.r8.graph.AppliedGraphLens;
 import com.android.tools.r8.graph.DexApplication;
@@ -182,6 +184,7 @@ public class R8 {
   static void writeApplication(
       ExecutorService executorService,
       DexApplication application,
+      AppView<? extends AppInfo> appView,
       String deadCode,
       GraphLense graphLense,
       NamingLens namingLens,
@@ -194,6 +197,7 @@ public class R8 {
       if (options.isGeneratingClassFiles()) {
         new CfApplicationWriter(
                 application,
+                appView,
                 options,
                 deadCode,
                 graphLense,
@@ -204,6 +208,7 @@ public class R8 {
       } else {
         new ApplicationWriter(
                 application,
+                appView,
                 options,
                 marker == null ? null : Collections.singletonList(marker),
                 deadCode,
@@ -259,6 +264,8 @@ public class R8 {
       AppView<AppInfoWithSubtyping> appView =
           new AppView<>(
               new AppInfoWithSubtyping(application), GraphLense.getIdentityLense(), options);
+      appView.setAppServices(AppServices.builder(appView).build());
+
       List<ProguardConfigurationRule> synthesizedProguardRules = new ArrayList<>();
       RootSet rootSet;
       String proguardSeedsData = null;
@@ -479,6 +486,8 @@ public class R8 {
             new EnumOrdinalMapCollector(appViewWithLiveness, options).run());
       }
 
+      appView.setAppServices(appView.appServices().rewrittenWithLens(appView.graphLense()));
+
       timing.begin("Create IR");
       Set<DexCallSite> desugaredCallSites;
       CfgPrinter printer = options.printCfg ? new CfgPrinter() : null;
@@ -667,6 +676,7 @@ public class R8 {
       writeApplication(
           executorService,
           application,
+          appView,
           application.deadCode,
           appView.graphLense(),
           namingLens,

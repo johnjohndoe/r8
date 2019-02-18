@@ -777,6 +777,7 @@ public class MainDexListTests extends TestBase {
     ApplicationWriter writer =
         new ApplicationWriter(
             application,
+            null,
             options,
             null,
             null,

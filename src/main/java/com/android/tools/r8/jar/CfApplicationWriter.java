@@ -10,6 +10,8 @@ import com.android.tools.r8.ClassFileConsumer;
 import com.android.tools.r8.dex.ApplicationWriter;
 import com.android.tools.r8.errors.Unimplemented;
 import com.android.tools.r8.errors.Unreachable;
+import com.android.tools.r8.graph.AppInfo;
+import com.android.tools.r8.graph.AppView;
 import com.android.tools.r8.graph.Code;
 import com.android.tools.r8.graph.DexAnnotation;
 import com.android.tools.r8.graph.DexAnnotationElement;
@@ -41,7 +43,6 @@ import com.android.tools.r8.utils.ExceptionUtils;
 import com.android.tools.r8.utils.InternalOptions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.concurrent.ExecutorService;
@@ -62,6 +63,7 @@ public class CfApplicationWriter {
   private static final boolean PRINT_CF = false;
 
   private final DexApplication application;
+  private final AppView<? extends AppInfo> appView;
   private final GraphLense graphLense;
   private final NamingLens namingLens;
   private final InternalOptions options;
@@ -72,6 +74,7 @@ public class CfApplicationWriter {
 
   public CfApplicationWriter(
       DexApplication application,
+      AppView<? extends AppInfo> appView,
       InternalOptions options,
       String deadCode,
       GraphLense graphLense,
@@ -79,6 +82,7 @@ public class CfApplicationWriter {
       String proguardSeedsData,
       ProguardMapSupplier proguardMapSupplier) {
     this.application = application;
+    this.appView = appView;
     this.graphLense = graphLense;
     this.namingLens = namingLens;
     this.options = options;
@@ -87,7 +91,7 @@ public class CfApplicationWriter {
     this.proguardSeedsData = proguardSeedsData;
   }
 
-  public void write(ClassFileConsumer consumer, ExecutorService executor) throws IOException {
+  public void write(ClassFileConsumer consumer, ExecutorService executor) {
     application.timing.begin("CfApplicationWriter.write");
     try {
       writeApplication(consumer, executor);
@@ -96,8 +100,7 @@ public class CfApplicationWriter {
     }
   }
 
-  private void writeApplication(ClassFileConsumer consumer, ExecutorService executor)
-      throws IOException {
+  private void writeApplication(ClassFileConsumer consumer, ExecutorService executor) {
     for (DexProgramClass clazz : application.classes()) {
       if (clazz.getSynthesizedFrom().isEmpty()) {
         writeClass(clazz, consumer);
@@ -107,6 +110,7 @@ public class CfApplicationWriter {
     }
     ApplicationWriter.supplyAdditionalConsumers(
         application,
+        appView,
         graphLense,
         namingLens,
         options,
@@ -115,7 +119,7 @@ public class CfApplicationWriter {
         proguardSeedsData);
   }
 
-  private void writeClass(DexProgramClass clazz, ClassFileConsumer consumer) throws IOException {
+  private void writeClass(DexProgramClass clazz, ClassFileConsumer consumer) {
     ClassWriter writer = new ClassWriter(0);
     writer.visitSource(clazz.sourceFile != null ? clazz.sourceFile.toString() : null, null);
     int version = getClassFileVersion(clazz);

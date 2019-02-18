@@ -18,6 +18,7 @@ import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -150,7 +151,8 @@ public interface ClassFileConsumer extends ProgramConsumer {
       return DescriptorUtils.getClassBinaryNameFromDescriptor(classDescriptor) + CLASS_EXTENSION;
     }
 
-    public static void writeResources(Path archive, List<ProgramResource> resources)
+    public static void writeResources(
+        Path archive, List<ProgramResource> resources, Set<DataEntryResource> dataResources)
         throws IOException, ResourceException {
       OpenOption[] options =
           new OpenOption[] {StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING};
@@ -161,6 +163,11 @@ public interface ClassFileConsumer extends ProgramConsumer {
             String className = resource.getClassDescriptors().iterator().next();
             String entryName = getClassFileName(className);
             byte[] bytes = ByteStreams.toByteArray(closer.register(resource.getByteStream()));
+            ZipUtils.writeToZipStream(out, entryName, bytes, ZipEntry.DEFLATED);
+          }
+          for (DataEntryResource dataResource : dataResources) {
+            String entryName = dataResource.getName();
+            byte[] bytes = ByteStreams.toByteArray(closer.register(dataResource.getByteStream()));
             ZipUtils.writeToZipStream(out, entryName, bytes, ZipEntry.DEFLATED);
           }
         }

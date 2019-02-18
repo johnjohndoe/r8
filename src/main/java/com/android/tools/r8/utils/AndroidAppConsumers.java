@@ -6,15 +6,21 @@ package com.android.tools.r8.utils;
 import com.android.tools.r8.BaseCompilerCommand;
 import com.android.tools.r8.ByteDataView;
 import com.android.tools.r8.ClassFileConsumer;
+import com.android.tools.r8.DataDirectoryResource;
+import com.android.tools.r8.DataEntryResource;
+import com.android.tools.r8.DataResourceConsumer;
 import com.android.tools.r8.DexFilePerClassFileConsumer;
 import com.android.tools.r8.DexIndexedConsumer;
 import com.android.tools.r8.DexIndexedConsumer.ForwardingConsumer;
 import com.android.tools.r8.DiagnosticsHandler;
 import com.android.tools.r8.ProgramConsumer;
+import com.android.tools.r8.ResourceException;
 import com.android.tools.r8.StringConsumer;
 import com.android.tools.r8.origin.Origin;
+import com.google.common.io.ByteStreams;
 import it.unimi.dsi.fastutil.ints.Int2ReferenceAVLTreeMap;
 import it.unimi.dsi.fastutil.ints.Int2ReferenceSortedMap;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -105,6 +111,44 @@ public class AndroidAppConsumers {
             }
           }
 
+          @Override
+          public DataResourceConsumer getDataResourceConsumer() {
+            DataResourceConsumer dataResourceConsumer =
+                consumer != null ? consumer.getDataResourceConsumer() : null;
+            return new DataResourceConsumer() {
+
+              @Override
+              public void accept(
+                  DataDirectoryResource directory, DiagnosticsHandler diagnosticsHandler) {
+                if (dataResourceConsumer != null) {
+                  dataResourceConsumer.accept(directory, diagnosticsHandler);
+                }
+              }
+
+              @Override
+              public void accept(DataEntryResource file, DiagnosticsHandler diagnosticsHandler) {
+                try {
+                  byte[] bytes = ByteStreams.toByteArray(file.getByteStream());
+                  DataEntryResource copy =
+                      DataEntryResource.fromBytes(bytes, file.getName(), file.getOrigin());
+                  builder.addDataResource(copy);
+                  if (dataResourceConsumer != null) {
+                    dataResourceConsumer.accept(copy, diagnosticsHandler);
+                  }
+                } catch (IOException | ResourceException e) {
+                  throw new RuntimeException(e);
+                }
+              }
+
+              @Override
+              public void finished(DiagnosticsHandler handler) {
+                if (dataResourceConsumer != null) {
+                  dataResourceConsumer.finished(handler);
+                }
+              }
+            };
+          }
+
           synchronized void addDexFile(int fileIndex, byte[] data, Set<String> descriptors) {
             files.put(fileIndex, new DescriptorsWithContents(descriptors, data));
           }
@@ -148,6 +192,44 @@ public class AndroidAppConsumers {
               assert getDataResourceConsumer() != null;
             }
           }
+
+          @Override
+          public DataResourceConsumer getDataResourceConsumer() {
+            DataResourceConsumer dataResourceConsumer =
+                consumer != null ? consumer.getDataResourceConsumer() : null;
+            return new DataResourceConsumer() {
+
+              @Override
+              public void accept(
+                  DataDirectoryResource directory, DiagnosticsHandler diagnosticsHandler) {
+                if (dataResourceConsumer != null) {
+                  dataResourceConsumer.accept(directory, diagnosticsHandler);
+                }
+              }
+
+              @Override
+              public void accept(DataEntryResource file, DiagnosticsHandler diagnosticsHandler) {
+                try {
+                  byte[] bytes = ByteStreams.toByteArray(file.getByteStream());
+                  DataEntryResource copy =
+                      DataEntryResource.fromBytes(bytes, file.getName(), file.getOrigin());
+                  builder.addDataResource(copy);
+                  if (dataResourceConsumer != null) {
+                    dataResourceConsumer.accept(copy, diagnosticsHandler);
+                  }
+                } catch (IOException | ResourceException e) {
+                  throw new RuntimeException(e);
+                }
+              }
+
+              @Override
+              public void finished(DiagnosticsHandler handler) {
+                if (dataResourceConsumer != null) {
+                  dataResourceConsumer.finished(handler);
+                }
+              }
+            };
+          }
         };
     programConsumer = wrapped;
     return wrapped;
@@ -181,6 +263,44 @@ public class AndroidAppConsumers {
             } else {
               assert getDataResourceConsumer() != null;
             }
+          }
+
+          @Override
+          public DataResourceConsumer getDataResourceConsumer() {
+            DataResourceConsumer dataResourceConsumer =
+                consumer != null ? consumer.getDataResourceConsumer() : null;
+            return new DataResourceConsumer() {
+
+              @Override
+              public void accept(
+                  DataDirectoryResource directory, DiagnosticsHandler diagnosticsHandler) {
+                if (dataResourceConsumer != null) {
+                  dataResourceConsumer.accept(directory, diagnosticsHandler);
+                }
+              }
+
+              @Override
+              public void accept(DataEntryResource file, DiagnosticsHandler diagnosticsHandler) {
+                try {
+                  byte[] bytes = ByteStreams.toByteArray(file.getByteStream());
+                  DataEntryResource copy =
+                      DataEntryResource.fromBytes(bytes, file.getName(), file.getOrigin());
+                  builder.addDataResource(copy);
+                  if (dataResourceConsumer != null) {
+                    dataResourceConsumer.accept(copy, diagnosticsHandler);
+                  }
+                } catch (IOException | ResourceException e) {
+                  throw new RuntimeException(e);
+                }
+              }
+
+              @Override
+              public void finished(DiagnosticsHandler handler) {
+                if (dataResourceConsumer != null) {
+                  dataResourceConsumer.finished(handler);
+                }
+              }
+            };
           }
         };
     programConsumer = wrapped;

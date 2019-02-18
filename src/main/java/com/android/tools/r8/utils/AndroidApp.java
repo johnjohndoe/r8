@@ -13,6 +13,7 @@ import com.android.tools.r8.DataDirectoryResource;
 import com.android.tools.r8.DataEntryResource;
 import com.android.tools.r8.DataResource;
 import com.android.tools.r8.DataResourceProvider;
+import com.android.tools.r8.DataResourceProvider.Visitor;
 import com.android.tools.r8.DexFilePerClassFileConsumer;
 import com.android.tools.r8.DexIndexedConsumer;
 import com.android.tools.r8.DirectoryClassFileProvider;
@@ -31,6 +32,7 @@ import com.android.tools.r8.origin.PathOrigin;
 import com.android.tools.r8.shaking.FilteredClassPath;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.io.ByteStreams;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -38,10 +40,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Collection of program files needed for processing.
@@ -213,6 +217,36 @@ public class AndroidApp {
     }
   }
 
+  public Set<DataEntryResource> getDataEntryResourcesForTesting() throws ResourceException {
+    Set<DataEntryResource> out = new TreeSet<>(Comparator.comparing(DataResource::getName));
+    for (ProgramResourceProvider programResourceProvider : getProgramResourceProviders()) {
+      DataResourceProvider dataResourceProvider = programResourceProvider.getDataResourceProvider();
+      if (dataResourceProvider != null) {
+        dataResourceProvider.accept(
+            new Visitor() {
+
+              @Override
+              public void visit(DataDirectoryResource directory) {
+                // Ignore.
+              }
+
+              @Override
+              public void visit(DataEntryResource file) {
+                try {
+                  byte[] bytes = ByteStreams.toByteArray(file.getByteStream());
+                  DataEntryResource copy =
+                      DataEntryResource.fromBytes(bytes, file.getName(), file.getOrigin());
+                  out.add(copy);
+                } catch (IOException | ResourceException e) {
+                  throw new RuntimeException(e);
+                }
+              }
+            });
+      }
+    }
+    return out;
+  }
+
   /** Get program resource providers. */
   public List<ProgramResourceProvider> getProgramResourceProviders() {
     return programResourceProviders;
@@ -320,21 +354,19 @@ public class AndroidApp {
     }
   }
 
-  /**
-   * Write the dex program resources to @code{archive} and the proguard resource as its sibling.
-   */
+  /** Write the dex program resources to @code{archive}. */
   public void writeToZip(Path archive, OutputMode outputMode) throws IOException {
     try {
       if (outputMode == OutputMode.DexIndexed) {
-        List<ProgramResource> resources = getDexProgramResourcesForTesting();
-        DexIndexedConsumer.ArchiveConsumer.writeResources(archive, resources);
+        DexIndexedConsumer.ArchiveConsumer.writeResources(
+            archive, getDexProgramResourcesForTesting(), getDataEntryResourcesForTesting());
       } else if (outputMode == OutputMode.DexFilePerClassFile) {
         List<ProgramResource> resources = getDexProgramResourcesForTesting();
         DexFilePerClassFileConsumer.ArchiveConsumer.writeResources(
             archive, resources, programResourcesMainDescriptor);
       } else if (outputMode == OutputMode.ClassFile) {
-        List<ProgramResource> resources = getClassProgramResourcesForTesting();
-        ClassFileConsumer.ArchiveConsumer.writeResources(archive, resources);
+        ClassFileConsumer.ArchiveConsumer.writeResources(
+            archive, getClassProgramResourcesForTesting(), getDataEntryResourcesForTesting());
       } else {
         throw new Unreachable("Unsupported output-mode for writing: " + outputMode);
       }

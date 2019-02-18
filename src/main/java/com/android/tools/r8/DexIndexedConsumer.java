@@ -179,7 +179,8 @@ public interface DexIndexedConsumer extends ProgramConsumer, ByteBufferProvider 
       outputBuilder.close(handler);
     }
 
-    public static void writeResources(Path archive, List<ProgramResource> resources)
+    public static void writeResources(
+        Path archive, List<ProgramResource> resources, Set<DataEntryResource> dataResources)
         throws IOException, ResourceException {
       OpenOption[] options =
           new OpenOption[] {StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING};
@@ -189,6 +190,11 @@ public interface DexIndexedConsumer extends ProgramConsumer, ByteBufferProvider 
             ProgramResource resource = resources.get(i);
             String entryName = getDefaultDexFileName(i);
             byte[] bytes = ByteStreams.toByteArray(closer.register(resource.getByteStream()));
+            ZipUtils.writeToZipStream(out, entryName, bytes, ZipEntry.STORED);
+          }
+          for (DataEntryResource dataResource : dataResources) {
+            String entryName = dataResource.getName();
+            byte[] bytes = ByteStreams.toByteArray(closer.register(dataResource.getByteStream()));
             ZipUtils.writeToZipStream(out, entryName, bytes, ZipEntry.STORED);
           }
         }
