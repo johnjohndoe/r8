@@ -567,7 +567,8 @@ public abstract class DexClass extends DexDefinition {
   }
 
   public boolean classInitializationMayHaveSideEffects(AppInfo appInfo, Predicate<DexType> ignore) {
-    if (ignore.test(type)) {
+    if (ignore.test(type)
+        || appInfo.dexItemFactory.libraryTypesWithoutStaticInitialization.contains(type)) {
       return false;
     }
     if (hasNonTrivialClassInitializer()) {
@@ -576,6 +577,15 @@ public abstract class DexClass extends DexDefinition {
     if (defaultValuesForStaticFieldsMayTriggerAllocation()) {
       return true;
     }
+    return initializationOfParentTypesMayHaveSideEffects(appInfo, ignore);
+  }
+
+  public boolean initializationOfParentTypesMayHaveSideEffects(AppInfo appInfo) {
+    return initializationOfParentTypesMayHaveSideEffects(appInfo, Predicates.alwaysFalse());
+  }
+
+  public boolean initializationOfParentTypesMayHaveSideEffects(
+      AppInfo appInfo, Predicate<DexType> ignore) {
     for (DexType iface : interfaces.values) {
       if (iface.classInitializationMayHaveSideEffects(appInfo, ignore)) {
         return true;

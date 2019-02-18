@@ -298,6 +298,7 @@ public class DexItemFactory {
   public final DexType metafactoryType = createType("Ljava/lang/invoke/LambdaMetafactory;");
   public final DexType callSiteType = createType("Ljava/lang/invoke/CallSite;");
   public final DexType lookupType = createType("Ljava/lang/invoke/MethodHandles$Lookup;");
+  public final DexType iteratorType = createType("Ljava/util/Iterator;");
   public final DexType serializableType = createType("Ljava/io/Serializable;");
   public final DexType externalizableType = createType("Ljava/io/Externalizable;");
   public final DexType comparableType = createType("Ljava/lang/Comparable;");
@@ -347,6 +348,9 @@ public class DexItemFactory {
               methodTypeType),
           createString("makeConcat")
       );
+
+  public final Set<DexType> libraryTypesWithoutStaticInitialization =
+      ImmutableSet.of(iteratorType, serializableType);
 
   private boolean skipNameValidationForTesting = false;
 

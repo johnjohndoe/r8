@@ -3,22 +3,17 @@
 // BSD-style license that can be found in the LICENSE file.
 package com.android.tools.r8.graph;
 
-import com.android.tools.r8.errors.Unreachable;
 import com.android.tools.r8.origin.Origin;
 import com.android.tools.r8.shaking.Enqueuer.AppInfoWithLiveness;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -27,6 +22,10 @@ public class AppInfo {
   public final DexApplication app;
   public final DexItemFactory dexItemFactory;
   private final ConcurrentHashMap<DexType, Map<Descriptor<?,?>, KeyedDexItem<?>>> definitions =
+      new ConcurrentHashMap<>();
+  // For some optimizations, e.g. optimizing synthetic classes, we may need to resolve the current
+  // class being optimized.
+  private ConcurrentHashMap<DexType, DexProgramClass> synthesizedClasses =
       new ConcurrentHashMap<>();
 
   public AppInfo(DexApplication application) {
@@ -46,6 +45,16 @@ public class AppInfo {
     // In particular, we have to invalidate the definitions cache, as its keys are no longer
     // valid.
     this(application);
+  }
+
+  public void addSynthesizedClass(DexProgramClass clazz) {
+    assert clazz.type.isD8R8SynthesizedClassType();
+    DexProgramClass previous = synthesizedClasses.put(clazz.type, clazz);
+    assert previous == null || previous == clazz;
+  }
+
+  public Collection<DexProgramClass> getSynthesizedClassesForSanityCheck() {
+    return Collections.unmodifiableCollection(synthesizedClasses.values());
   }
 
   private Map<Descriptor<?,?>, KeyedDexItem<?>> computeDefinitions(DexType type) {
@@ -78,6 +87,11 @@ public class AppInfo {
   }
 
   public DexClass definitionFor(DexType type) {
+    DexProgramClass cached = synthesizedClasses.get(type);
+    if (cached != null) {
+      assert app.definitionFor(type) == null;
+      return cached;
+    }
     return app.definitionFor(type);
   }
 
@@ -522,51 +536,6 @@ public class AppInfo {
       type = clazz.superType;
     } while (type != null);
     return result;
-  }
-
-  public boolean canTriggerStaticInitializer(DexType type, boolean ignoreTypeItself) {
-    DexClass clazz = definitionFor(type);
-    assert clazz != null;
-    return canTriggerStaticInitializer(clazz, ignoreTypeItself);
-  }
-
-  public boolean canTriggerStaticInitializer(DexClass clazz, boolean ignoreTypeItself) {
-    Set<DexType> knownInterfaces = Sets.newIdentityHashSet();
-
-    // Process superclass chain.
-    DexClass current = clazz;
-    while (current != null && current.type != dexItemFactory.objectType) {
-      if (canTriggerStaticInitializer(current) && (!ignoreTypeItself || current != clazz)) {
-        return true;
-      }
-      knownInterfaces.addAll(Arrays.asList(current.interfaces.values));
-      current = current.superType != null ? definitionFor(current.superType) : null;
-    }
-
-    // Process interfaces.
-    Queue<DexType> queue = new ArrayDeque<>(knownInterfaces);
-    while (!queue.isEmpty()) {
-      DexType iface = queue.remove();
-      DexClass definition = definitionFor(iface);
-      if (canTriggerStaticInitializer(definition)) {
-        return true;
-      }
-      if (!definition.isInterface()) {
-        throw new Unreachable(iface.toSourceString() + " is expected to be an interface");
-      }
-
-      for (DexType superIface : definition.interfaces.values) {
-        if (knownInterfaces.add(superIface)) {
-          queue.add(superIface);
-        }
-      }
-    }
-    return false;
-  }
-
-  public static boolean canTriggerStaticInitializer(DexClass clazz) {
-    // Assume it *may* trigger if we didn't find the definition.
-    return clazz == null || clazz.hasClassInitializer();
   }
 
   public interface ResolutionResult {

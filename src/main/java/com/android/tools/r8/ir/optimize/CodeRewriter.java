@@ -1843,7 +1843,7 @@ public class CodeRewriter {
       return;
     }
 
-    DexClass clazz = definitionFor(method.method.getHolder());
+    DexClass clazz = appInfo.definitionFor(method.method.getHolder());
     if (clazz == null) {
       return;
     }
@@ -2044,10 +2044,6 @@ public class CodeRewriter {
     }
   }
 
-  DexClass definitionFor(DexType type) {
-    return converter.definitionFor(type);
-  }
-
   public void removeTrivialCheckCastAndInstanceOfInstructions(
       IRCode code, boolean enableWholeProgramOptimizations) {
     if (!enableWholeProgramOptimizations) {
@@ -2153,7 +2149,7 @@ public class CodeRewriter {
     if (baseType.isPrimitiveType()) {
       return false;
     }
-    DexClass clazz = definitionFor(baseType);
+    DexClass clazz = appInfo.definitionFor(baseType);
     if (clazz == null) {
       // Conservatively say yes.
       return true;
@@ -3502,7 +3498,7 @@ public class CodeRewriter {
       if (type == dexItemFactory.throwableType) {
         return true;
       }
-      DexClass dexClass = definitionFor(type);
+      DexClass dexClass = appInfo.definitionFor(type);
       if (dexClass == null) {
         throw new CompilationError("Class or interface " + type.toSourceString() +
             " required for desugaring of try-with-resources is not found.");
