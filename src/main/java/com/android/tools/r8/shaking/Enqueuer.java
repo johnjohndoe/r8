@@ -178,10 +178,10 @@ public class Enqueuer {
    * for these.
    */
   private final Set<DexType> liveTypes = Sets.newIdentityHashSet();
-  /**
-   * Set of annotation types that are instantiated.
-   */
-  private final Set<DexType> instantiatedAnnotations = Sets.newIdentityHashSet();
+
+  /** Set of annotation types that are instantiated. */
+  private final SetWithReason<DexAnnotation> liveAnnotations =
+      new SetWithReason<>(this::registerAnnotation);
   /** Set of types that are actually instantiated. These cannot be abstract. */
   private final SetWithReason<DexType> instantiatedTypes = new SetWithReason<>(this::registerType);
   /**
@@ -814,9 +814,6 @@ public class Enqueuer {
           }
         }
       }
-      if (!holder.annotations.isEmpty()) {
-        processAnnotations(holder.annotations.annotations);
-      }
       // We also need to add the corresponding <clinit> to the set of live methods, as otherwise
       // static field initialization (and other class-load-time sideeffects) will not happen.
       KeepReason reason = KeepReason.reachableFromLiveType(type);
@@ -832,10 +829,19 @@ public class Enqueuer {
         enqueueFirstNonSerializableClassInitializer(holder, reason);
       }
 
-      // If this type has deferred annotations, we have to process those now, too.
-      Set<DexAnnotation> annotations = deferredAnnotations.remove(type);
-      if (annotations != null) {
-        annotations.forEach(this::handleAnnotationOfLiveType);
+      if (!holder.isLibraryClass()) {
+        if (!holder.annotations.isEmpty()) {
+          processAnnotations(holder, holder.annotations.annotations);
+        }
+        // If this type has deferred annotations, we have to process those now, too.
+        Set<DexAnnotation> annotations = deferredAnnotations.remove(type);
+        if (annotations != null && !annotations.isEmpty()) {
+          assert holder.accessFlags.isAnnotation();
+          assert annotations.stream().allMatch(a -> a.annotation.type == holder.type);
+          annotations.forEach(annotation -> handleAnnotation(holder, annotation));
+        }
+      } else {
+        assert deferredAnnotations.get(holder) == null;
       }
 
       Map<DexReference, Set<ProguardKeepRule>> dependentItems = rootSet.getDependentItems(holder);
@@ -845,36 +851,33 @@ public class Enqueuer {
     }
   }
 
-  private void handleAnnotationOfLiveType(DexAnnotation annotation) {
-    DexType type = annotation.annotation.type;
-    // Record that it is instantiated if it should be kept when its type is live.
-    if (shouldKeepAnnotation(annotation, true, appInfo.dexItemFactory, options)) {
-      instantiatedAnnotations.add(type);
-    }
-    AnnotationReferenceMarker referenceMarker = new AnnotationReferenceMarker(
-        annotation.annotation.type, appInfo.dexItemFactory);
-    annotation.annotation.collectIndexedItems(referenceMarker);
-  }
-
-  private void processAnnotations(DexAnnotation[] annotations) {
+  private void processAnnotations(DexDefinition holder, DexAnnotation[] annotations) {
     for (DexAnnotation annotation : annotations) {
-      processAnnotation(annotation);
+      processAnnotation(holder, annotation);
     }
   }
 
-  private void processAnnotation(DexAnnotation annotation) {
+  private void processAnnotation(DexDefinition holder, DexAnnotation annotation) {
+    handleAnnotation(holder, annotation);
+  }
+
+  private void handleAnnotation(DexDefinition holder, DexAnnotation annotation) {
+    assert !holder.isDexClass() || !holder.asDexClass().isLibraryClass();
     DexType type = annotation.annotation.type;
-    if (liveTypes.contains(type)) {
-      // The type of this annotation is already live, so pick up its dependencies.
-      handleAnnotationOfLiveType(annotation);
-    } else {
-      // Record that it is instantiated if it should be kept although its type is not live.
-      if (shouldKeepAnnotation(annotation, false, appInfo.dexItemFactory, options)) {
-        instantiatedAnnotations.add(type);
-      }
+    boolean annotationTypeIsLibraryClass =
+        appInfo.definitionFor(type) == null || appInfo.definitionFor(type).isLibraryClass();
+    boolean isLive = annotationTypeIsLibraryClass || liveTypes.contains(type);
+    if (!shouldKeepAnnotation(annotation, isLive, appInfo.dexItemFactory, options)) {
       // Remember this annotation for later.
-      deferredAnnotations.computeIfAbsent(type, ignore -> new HashSet<>()).add(annotation);
+      if (!annotationTypeIsLibraryClass) {
+        deferredAnnotations.computeIfAbsent(type, ignore -> new HashSet<>()).add(annotation);
+      }
+      return;
     }
+    liveAnnotations.add(annotation, KeepReason.annotatedOn(holder));
+    AnnotationReferenceMarker referenceMarker =
+        new AnnotationReferenceMarker(annotation.annotation.type, appInfo.dexItemFactory);
+    annotation.annotation.collectIndexedItems(referenceMarker);
   }
 
   private void handleInvokeOfStaticTarget(DexMethod method, KeepReason reason) {
@@ -967,8 +970,11 @@ public class Enqueuer {
     }
     markTypeAsLive(method.method.holder);
     markParameterAndReturnTypesAsLive(method);
-    processAnnotations(method.annotations.annotations);
-    method.parameterAnnotationsList.forEachAnnotation(this::processAnnotation);
+    if (!appInfo.definitionFor(method.method.holder).isLibraryClass()) {
+      processAnnotations(method, method.annotations.annotations);
+      method.parameterAnnotationsList.forEachAnnotation(
+          annotation -> processAnnotation(method, annotation));
+    }
     if (Log.ENABLED) {
       Log.verbose(getClass(), "Method `%s` is targeted.", method.method);
     }
@@ -1625,8 +1631,11 @@ public class Enqueuer {
         }
       }
       markParameterAndReturnTypesAsLive(method);
-      processAnnotations(method.annotations.annotations);
-      method.parameterAnnotationsList.forEachAnnotation(this::processAnnotation);
+      if (!appInfo.definitionFor(method.method.holder).isLibraryClass()) {
+        processAnnotations(method, method.annotations.annotations);
+        method.parameterAnnotationsList.forEachAnnotation(
+            annotation -> processAnnotation(method, annotation));
+      }
       method.registerCodeReferences(new UseRegistry(options.itemFactory, method));
       // Add all dependent members to the workqueue.
       enqueueRootItems(rootSet.getDependentItems(method));
@@ -1922,10 +1931,8 @@ public class Enqueuer {
      * for these.
      */
     public final SortedSet<DexType> liveTypes;
-    /**
-     * Set of annotation types that are instantiated.
-     */
-    final SortedSet<DexType> instantiatedAnnotations;
+    /** Set of annotation types that are instantiated. */
+    final SortedSet<DexType> instantiatedAnnotationTypes;
     /**
      * Set of service types (from META-INF/services/) that may have been instantiated reflectively
      * via ServiceLoader.load() or ServiceLoader.loadInstalled().
@@ -2089,8 +2096,10 @@ public class Enqueuer {
       super(appInfo);
       this.liveTypes = ImmutableSortedSet.copyOf(
           PresortedComparable<DexType>::slowCompareTo, enqueuer.liveTypes);
-      this.instantiatedAnnotations = ImmutableSortedSet.copyOf(
-          PresortedComparable<DexType>::slowCompareTo, enqueuer.instantiatedAnnotations);
+      ImmutableSortedSet.Builder<DexType> builder =
+          ImmutableSortedSet.orderedBy(PresortedComparable<DexType>::slowCompareTo);
+      enqueuer.liveAnnotations.items.forEach(annotation -> builder.add(annotation.annotation.type));
+      this.instantiatedAnnotationTypes = builder.build();
       this.instantiatedAppServices =
           ImmutableSortedSet.copyOf(
               PresortedComparable<DexType>::slowCompareTo, enqueuer.instantiatedAppServices);
@@ -2151,7 +2160,7 @@ public class Enqueuer {
         Collection<DexType> removedClasses) {
       super(application);
       this.liveTypes = previous.liveTypes;
-      this.instantiatedAnnotations = previous.instantiatedAnnotations;
+      this.instantiatedAnnotationTypes = previous.instantiatedAnnotationTypes;
       this.instantiatedAppServices = previous.instantiatedAppServices;
       this.instantiatedTypes = previous.instantiatedTypes;
       this.instantiatedLambdas = previous.instantiatedLambdas;
@@ -2200,8 +2209,8 @@ public class Enqueuer {
         GraphLense lense) {
       super(application, lense);
       this.liveTypes = rewriteItems(previous.liveTypes, lense::lookupType);
-      this.instantiatedAnnotations =
-          rewriteItems(previous.instantiatedAnnotations, lense::lookupType);
+      this.instantiatedAnnotationTypes =
+          rewriteItems(previous.instantiatedAnnotationTypes, lense::lookupType);
       this.instantiatedAppServices =
           rewriteItems(previous.instantiatedAppServices, lense::lookupType);
       this.instantiatedTypes = rewriteItems(previous.instantiatedTypes, lense::lookupType);
@@ -2281,7 +2290,7 @@ public class Enqueuer {
         Map<DexType, Reference2IntMap<DexField>> ordinalsMaps) {
       super(previous);
       this.liveTypes = previous.liveTypes;
-      this.instantiatedAnnotations = previous.instantiatedAnnotations;
+      this.instantiatedAnnotationTypes = previous.instantiatedAnnotationTypes;
       this.instantiatedAppServices = previous.instantiatedAppServices;
       this.instantiatedTypes = previous.instantiatedTypes;
       this.instantiatedLambdas = previous.instantiatedLambdas;
@@ -2347,7 +2356,7 @@ public class Enqueuer {
       assert type.isClassType();
       return instantiatedTypes.contains(type)
           || instantiatedLambdas.contains(type)
-          || instantiatedAnnotations.contains(type);
+          || instantiatedAnnotationTypes.contains(type);
     }
 
     public boolean isInstantiatedIndirectly(DexType type) {
@@ -2876,6 +2885,14 @@ public class Enqueuer {
       return;
     }
     registerEdge(getClassGraphNode(type), reason);
+  }
+
+  private void registerAnnotation(DexAnnotation annotation, KeepReason reason) {
+    assert getSourceNode(reason) != null;
+    if (keptGraphConsumer == null) {
+      return;
+    }
+    registerEdge(getAnnotationGraphNode(annotation.annotation.type), reason);
   }
 
   private void registerMethod(DexEncodedMethod method, KeepReason reason) {
