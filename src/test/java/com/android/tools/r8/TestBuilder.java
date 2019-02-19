@@ -24,6 +24,15 @@ public abstract class TestBuilder<RR extends TestRunResult, T extends TestBuilde
 
   abstract T self();
 
+  public <S> S map(ThrowableFunction<T, S> fn) {
+    return fn.applyWithRuntimeException(self());
+  }
+
+  public T apply(ThrowableConsumer<T> fn) {
+    fn.acceptWithRuntimeException(self());
+    return self();
+  }
+
   public abstract RR run(String mainClass)
       throws IOException, CompilationFailedException;
 

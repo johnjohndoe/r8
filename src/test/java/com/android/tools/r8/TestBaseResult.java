@@ -5,6 +5,7 @@
 package com.android.tools.r8;
 
 public abstract class TestBaseResult<CR extends TestBaseResult<CR, RR>, RR extends TestRunResult> {
+
   final TestState state;
 
   TestBaseResult(TestState state) {
@@ -12,4 +13,13 @@ public abstract class TestBaseResult<CR extends TestBaseResult<CR, RR>, RR exten
   }
 
   public abstract CR self();
+
+  public <S> S map(ThrowableFunction<CR, S> fn) {
+    return fn.applyWithRuntimeException(self());
+  }
+
+  public <T extends Throwable> CR apply(ThrowableConsumer<CR> fn) {
+    fn.acceptWithRuntimeException(self());
+    return self();
+  }
 }
