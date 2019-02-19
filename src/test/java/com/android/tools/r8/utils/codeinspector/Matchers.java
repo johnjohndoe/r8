@@ -124,6 +124,10 @@ public class Matchers {
     };
   }
 
+  public static Matcher<Subject> isRenamed(boolean isRenamed) {
+    return isRenamed ? isRenamed() : isNotRenamed();
+  }
+
   public static Matcher<MemberSubject> isStatic() {
     return new TypeSafeMatcher<MemberSubject>() {
       @Override
