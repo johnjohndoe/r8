@@ -2399,4 +2399,24 @@ public class ProguardConfigurationParserTest extends TestBase {
       assertThat(result.stderr, containsString(expectedMessage));
     }
   }
+
+  @Test
+  public void b124181032() throws Exception {
+    // Test spaces and quotes in class name list.
+    ProguardConfigurationParser parser;
+    parser = new ProguardConfigurationParser(new DexItemFactory(), reporter);
+    parser.parse(
+        createConfigurationForTesting(
+            ImmutableList.of(
+                "-keepclassmembers class \"a.b.c.**\" ,"
+                    + " !**d , '!**e' , \"!**f\" , g , 'h' , \"i\" { ",
+                "<fields>;",
+                "<init>();",
+                "}")));
+    List<ProguardConfigurationRule> rules = parser.getConfig().getRules();
+    assertEquals(1, rules.size());
+    ProguardConfigurationRule rule = rules.get(0);
+    assertEquals(ProguardKeepRuleType.KEEP_CLASS_MEMBERS.toString(), rule.typeString());
+    assertEquals("a.b.c.**,!**d,!**e,!**f,g,h,i", rule.getClassNames().toString());
+  }
 }

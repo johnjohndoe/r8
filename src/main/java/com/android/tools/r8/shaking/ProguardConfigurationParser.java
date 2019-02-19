@@ -1431,11 +1431,27 @@ public class ProguardConfigurationParser {
     }
 
     private IdentifierPatternWithWildcards acceptIdentifierWithBackreference(IdentifierType kind) {
+      IdentifierPatternWithWildcardsAndNegation pattern =
+          acceptIdentifierWithBackreference(kind, false);
+      if (pattern == null) {
+        return null;
+      }
+      assert !pattern.negated;
+      return pattern.patternWithWildcards;
+    }
+
+    private IdentifierPatternWithWildcardsAndNegation acceptIdentifierWithBackreference(
+        IdentifierType kind, boolean allowNegation) {
       ImmutableList.Builder<ProguardWildcard> wildcardsCollector = ImmutableList.builder();
       StringBuilder currentAsterisks = null;
       int asteriskCount = 0;
       StringBuilder currentBackreference = null;
       skipWhitespace();
+
+      final char quote = acceptQuoteIfPresent();
+      final boolean quoted = isQuote(quote);
+      final boolean negated = allowNegation ? acceptChar('!') : false;
+
       int start = position;
       int end = position;
       while (!eof(end)) {
@@ -1514,9 +1530,17 @@ public class ProguardConfigurationParser {
           currentBackreference = new StringBuilder();
           end += Character.charCount(current);
         } else {
+          if (quoted && quote != current) {
+            throw reporter.fatalError(
+                new StringDiagnostic(
+                    "Invalid character '" + (char) current + "', expected end-quote.",
+                    origin,
+                    getPosition()));
+          }
           break;
         }
       }
+      position = quoted ? end + 1 : end;
       if (currentAsterisks != null) {
         wildcardsCollector.add(new ProguardWildcard.Pattern(currentAsterisks.toString()));
       }
@@ -1528,10 +1552,8 @@ public class ProguardConfigurationParser {
       if (start == end) {
         return null;
       }
-      position = end;
-      return new IdentifierPatternWithWildcards(
-          contents.substring(start, end),
-          wildcardsCollector.build());
+      return new IdentifierPatternWithWildcardsAndNegation(
+          contents.substring(start, end), wildcardsCollector.build(), negated);
     }
 
     private String acceptFieldNameOrIntegerForReturn() {
@@ -1625,19 +1647,20 @@ public class ProguardConfigurationParser {
       }
     }
 
+    private void parseClassNameAddToBuilder(ProguardClassNameList.Builder builder)
+        throws ProguardRuleParserException {
+      IdentifierPatternWithWildcardsAndNegation name = parseClassName(true);
+      builder.addClassName(
+          name.negated,
+          ProguardTypeMatcher.create(name.patternWithWildcards, ClassOrType.CLASS, dexItemFactory));
+      skipWhitespace();
+    }
+
     private ProguardClassNameList parseClassNames() throws ProguardRuleParserException {
       ProguardClassNameList.Builder builder = ProguardClassNameList.builder();
-      skipWhitespace();
-      boolean negated = acceptChar('!');
-      builder.addClassName(negated,
-          ProguardTypeMatcher.create(parseClassName(), ClassOrType.CLASS, dexItemFactory));
-      skipWhitespace();
-      while (acceptChar(',')) {
-        negated = acceptChar('!');
-        builder.addClassName(negated,
-            ProguardTypeMatcher.create(parseClassName(), ClassOrType.CLASS, dexItemFactory));
-        skipWhitespace();
-      }
+      do {
+        parseClassNameAddToBuilder(builder);
+      } while (acceptChar(','));
       return builder.build();
     }
 
@@ -1647,8 +1670,15 @@ public class ProguardConfigurationParser {
     }
 
     private IdentifierPatternWithWildcards parseClassName() throws ProguardRuleParserException {
-      IdentifierPatternWithWildcards name =
-          acceptIdentifierWithBackreference(IdentifierType.CLASS_NAME);
+      IdentifierPatternWithWildcardsAndNegation name = parseClassName(false);
+      assert !name.negated;
+      return name.patternWithWildcards;
+    }
+
+    private IdentifierPatternWithWildcardsAndNegation parseClassName(boolean allowNegation)
+        throws ProguardRuleParserException {
+      IdentifierPatternWithWildcardsAndNegation name =
+          acceptIdentifierWithBackreference(IdentifierType.CLASS_NAME, allowNegation);
       if (name == null) {
         throw parseError("Class name expected");
       }
@@ -1833,6 +1863,17 @@ public class ProguardConfigurationParser {
         return !(angleStartCount == angleEndCount && angleStartCount == wildcards.size());
       }
       return false;
+    }
+  }
+
+  static class IdentifierPatternWithWildcardsAndNegation {
+    final IdentifierPatternWithWildcards patternWithWildcards;
+    final boolean negated;
+
+    IdentifierPatternWithWildcardsAndNegation(
+        String pattern, List<ProguardWildcard> wildcards, boolean negated) {
+      patternWithWildcards = new IdentifierPatternWithWildcards(pattern, wildcards);
+      this.negated = negated;
     }
   }
 }
