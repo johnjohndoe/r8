@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.Collection;
 import org.junit.Assert;
 import org.junit.Test;
+import org.junit.Ignore;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
@@ -36,6 +37,7 @@ public class LambdaTest extends DebugTestBase {
   }
 
   @Test
+  @Ignore("b/123390221: The 1.4 release branch may be using a broken JDK which breaks this test.")
   public void testLambda_ExpressionOnSameLine() throws Throwable {
     String debuggeeClass = "DebugLambda";
     String initialMethodName = "printInt";

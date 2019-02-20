@@ -23,7 +23,8 @@ public class LambdaOuterContextTestRunner extends DebugTestBase {
   public void testJvm() throws Throwable {
     JvmTestBuilder jvmTestBuilder = testForJvm().addTestClasspath();
     jvmTestBuilder.run(CLASS).assertSuccessWithOutput(EXPECTED);
-    runDebugger(jvmTestBuilder.debugConfig());
+    // b/123390221: The 1.4 release branch may be using a broken JDK which breaks this test.
+    // runDebugger(jvmTestBuilder.debugConfig());
   }
 
   @Test
@@ -31,7 +32,8 @@ public class LambdaOuterContextTestRunner extends DebugTestBase {
     D8TestCompileResult compileResult =
         testForD8().addProgramClassesAndInnerClasses(CLASS).compile();
     compileResult.run(CLASS).assertSuccessWithOutput(EXPECTED);
-    runDebugger(compileResult.debugConfig());
+    // b/123390221: The 1.4 release branch may be using a broken JDK which breaks this test.
+    // runDebugger(compileResult.debugConfig());
   }
 
   @Test
@@ -44,7 +46,8 @@ public class LambdaOuterContextTestRunner extends DebugTestBase {
             .noTreeShaking()
             .compile();
     compileResult.run(CLASS).assertSuccessWithOutput(EXPECTED);
-    runDebugger(compileResult.debugConfig());
+    // b/123390221: The 1.4 release branch may be using a broken JDK which breaks this test.
+    // runDebugger(compileResult.debugConfig());
   }
 
   private void runDebugger(DebugTestConfig config) throws Throwable {
