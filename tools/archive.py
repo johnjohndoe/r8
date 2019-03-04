@@ -94,9 +94,10 @@ def Main():
 
   # Generate an r8-ed build without dependencies.
   # The '-Pno_internal' flag is important because we generate the lib based on uses in tests.
-  gradle.RunGradleExcludeDeps([utils.R8LIB_NO_DEPS, '-Pno_internal'])
-  shutil.copyfile(utils.R8LIB_JAR, utils.R8LIB_EXCLUDE_DEPS_JAR)
-  shutil.copyfile(utils.R8LIB_JAR + '.map', utils.R8LIB_EXCLUDE_DEPS_JAR + '.map')
+  # TODO(127264123): Remove commented out lines.
+  # gradle.RunGradleExcludeDeps([utils.R8LIB_NO_DEPS, '-Pno_internal'])
+  # shutil.copyfile(utils.R8LIB_JAR, utils.R8LIB_EXCLUDE_DEPS_JAR)
+  # shutil.copyfile(utils.R8LIB_JAR + '.map', utils.R8LIB_EXCLUDE_DEPS_JAR + '.map')
 
   # Create maven release which uses a build that exclude dependencies.
   create_maven_release.main(["--out", utils.LIBS])
@@ -109,14 +110,15 @@ def Main():
   # The target tasks postfixed by 'lib' depend on the actual target task so
   # building it invokes the original task first.
   # The '-Pno_internal' flag is important because we generate the lib based on uses in tests.
+  # TODO(127264123): Remove commented out targets.
   gradle.RunGradle([
     utils.R8,
     utils.D8,
     utils.COMPATDX,
     utils.COMPATPROGUARD,
-    utils.R8LIB,
-    utils.COMPATDXLIB,
-    utils.COMPATPROGUARDLIB,
+    # utils.R8LIB,
+    # utils.COMPATDXLIB,
+    # utils.COMPATPROGUARDLIB,
     '-Pno_internal'
   ])
   version = GetVersion()
@@ -137,21 +139,22 @@ def Main():
           'releaser=go/r8bot (' + os.environ.get('BUILDBOT_SLAVENAME') + ')\n')
       version_writer.write('version-file.version.code=1\n')
 
+    # TODO(127264123): Remove commented out files.
     for file in [
       utils.D8_JAR,
       utils.R8_JAR,
-      utils.R8LIB_JAR,
-      utils.R8LIB_JAR + '.map',
+      # utils.R8LIB_JAR,
+      # utils.R8LIB_JAR + '.map',
       utils.R8_SRC_JAR,
       utils.R8_FULL_EXCLUDE_DEPS_JAR,
-      utils.R8LIB_EXCLUDE_DEPS_JAR,
-      utils.R8LIB_EXCLUDE_DEPS_JAR + '.map',
+      # utils.R8LIB_EXCLUDE_DEPS_JAR,
+      # utils.R8LIB_EXCLUDE_DEPS_JAR + '.map',
       utils.COMPATDX_JAR,
-      utils.COMPATDXLIB_JAR,
-      utils.COMPATDXLIB_JAR + '.map',
+      # utils.COMPATDXLIB_JAR,
+      # utils.COMPATDXLIB_JAR + '.map',
       utils.COMPATPROGUARD_JAR,
-      utils.COMPATPROGUARDLIB_JAR,
-      utils.COMPATPROGUARDLIB_JAR + '.map',
+      # utils.COMPATPROGUARDLIB_JAR,
+      # utils.COMPATPROGUARDLIB_JAR + '.map',
       utils.MAVEN_ZIP,
       utils.GENERATED_LICENSE,
     ]:

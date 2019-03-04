@@ -41,7 +41,7 @@ COMPATPROGUARDLIB = 'compatproguardlib'
 D8_JAR = os.path.join(LIBS, 'd8.jar')
 R8_JAR = os.path.join(LIBS, 'r8.jar')
 R8LIB_JAR = os.path.join(LIBS, 'r8lib.jar')
-R8_SRC_JAR = os.path.join(LIBS, 'r8-src.jar')
+R8_SRC_JAR = os.path.join(LIBS, '1.4-src.jar')
 R8LIB_EXCLUDE_DEPS_JAR = os.path.join(LIBS, 'r8lib-exclude-deps.jar')
 R8_FULL_EXCLUDE_DEPS_JAR = os.path.join(LIBS, 'r8-full-exclude-deps.jar')
 COMPATDX_JAR = os.path.join(LIBS, 'compatdx.jar')
@@ -313,5 +313,3 @@ def is_bot():
 
 def uncompressed_size(path):
   return sum(z.file_size for z in zipfile.ZipFile(path).infolist())
-
-
