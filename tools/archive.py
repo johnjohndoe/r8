@@ -88,8 +88,9 @@ def GetMavenUrl(is_master):
 
 def Main():
   (options, args) = ParseOptions()
-  if not utils.is_bot() and not options.dry_run:
-    raise Exception('You are not a bot, don\'t archive builds')
+  # TODO(126871526): Fix the is_bot check.
+  # if not utils.is_bot() and not options.dry_run:
+  #   raise Exception('You are not a bot, don\'t archive builds')
 
   # Generate an r8-ed build without dependencies.
   # The '-Pno_internal' flag is important because we generate the lib based on uses in tests.
