@@ -12,11 +12,12 @@ import com.android.tools.r8.dex.IndexedItemCollection;
 import com.android.tools.r8.errors.Unreachable;
 import com.android.tools.r8.ir.desugar.Java8MethodRewriter;
 import com.android.tools.r8.ir.desugar.TwrCloseResourceRewriter;
+import com.android.tools.r8.logging.Log;
 import com.android.tools.r8.naming.NamingLens;
 import com.android.tools.r8.utils.DescriptorUtils;
 import com.android.tools.r8.utils.InternalOptions.OutlineOptions;
-import com.google.common.collect.ImmutableList;
 import com.google.common.base.Predicates;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
@@ -169,6 +170,13 @@ public class DexType extends DexReference implements PresortedComparable<DexType
   }
 
   public boolean isStrictSubtypeOf(DexType other, AppInfo appInfo) {
+    // For all erroneous cases, saying `no`---not a strict subtype---is conservative.
+    return isStrictSubtypeOf(other, appInfo, false);
+  }
+
+  // Depending on optimizations, conservative answer of subtype relation may vary.
+  // Pass different `orElse` in that case.
+  public boolean isStrictSubtypeOf(DexType other, AppInfo appInfo, boolean orElse) {
     if (this == other) {
       return false;
     }
@@ -187,7 +195,7 @@ public class DexType extends DexReference implements PresortedComparable<DexType
       return other.directSubtypes.stream().anyMatch(subtype -> this.isSubtypeOf(subtype,
           appInfo));
     }
-    return isSubtypeOfClass(other, appInfo);
+    return isSubtypeOfClass(other, appInfo, orElse);
   }
 
   private boolean isInterfaceSubtypeOf(DexType candidate, DexType other, AppInfo appInfo) {
@@ -207,15 +215,22 @@ public class DexType extends DexReference implements PresortedComparable<DexType
     return false;
   }
 
-  private boolean isSubtypeOfClass(DexType other, AppInfo appInfo) {
+  private boolean isSubtypeOfClass(DexType other, AppInfo appInfo, boolean orElse) {
     DexType self = this;
     if (other.hierarchyLevel == UNKNOWN_LEVEL) {
-      // We have no definition for this class, hence it is not part of the
-      // hierarchy.
-      return false;
+      // We have no definition for this class, hence it is not part of the hierarchy.
+      return orElse;
     }
     while (other.hierarchyLevel < self.hierarchyLevel) {
       DexClass holder = appInfo.definitionFor(self);
+      // TODO(b/113374256): even synthesized class should be available ATM.
+      if (holder == null) {
+        assert self.isD8R8SynthesizedClassType();
+        if (Log.ENABLED) {
+          Log.debug(getClass(), "%s is not in AppInfo yet.", self.toSourceString());
+        }
+        return orElse;
+      }
       assert holder != null && !holder.isInterface();
       self = holder.superType;
     }
