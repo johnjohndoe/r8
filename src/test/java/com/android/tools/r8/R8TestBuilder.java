@@ -12,11 +12,14 @@ import com.android.tools.r8.shaking.CollectingGraphConsumer;
 import com.android.tools.r8.shaking.ProguardConfiguration;
 import com.android.tools.r8.shaking.ProguardConfigurationRule;
 import com.android.tools.r8.utils.AndroidApp;
+import com.android.tools.r8.utils.FileUtils;
 import com.android.tools.r8.utils.InternalOptions;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -45,6 +48,7 @@ public class R8TestBuilder
   private boolean enableUnusedArgumentAnnotations = false;
   private CollectingGraphConsumer graphConsumer = null;
   private List<String> keepRules = new ArrayList<>();
+  private List<String> applyMappingMaps = new ArrayList<>();
 
   @Override
   R8TestBuilder self() {
@@ -69,6 +73,21 @@ public class R8TestBuilder
     builder.setDisableTreeShaking(!enableTreeShaking);
     builder.setDisableMinification(!enableMinification);
     builder.setProguardMapConsumer((string, ignore) -> proguardMapBuilder.append(string));
+
+    if (!applyMappingMaps.isEmpty()) {
+      try {
+        Path mappingsDir = getState().getNewTempFolder();
+        for (int i = 0; i < applyMappingMaps.size(); i++) {
+          String mapContent = applyMappingMaps.get(i);
+          Path mapPath = mappingsDir.resolve("mapping" + i + ".map");
+          FileUtils.writeTextFile(mapPath, mapContent);
+          builder.addProguardConfiguration(
+              Collections.singletonList("-applymapping " + mapPath.toString()), Origin.unknown());
+        }
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
 
     class Box {
       private List<ProguardConfigurationRule> syntheticProguardRules;
@@ -205,6 +224,11 @@ public class R8TestBuilder
 
   public R8TestBuilder setMainDexKeptGraphConsumer(GraphConsumer graphConsumer) {
     builder.setMainDexKeptGraphConsumer(graphConsumer);
+    return self();
+  }
+
+  public R8TestBuilder addApplyMapping(String proguardMap) {
+    applyMappingMaps.add(proguardMap);
     return self();
   }
 

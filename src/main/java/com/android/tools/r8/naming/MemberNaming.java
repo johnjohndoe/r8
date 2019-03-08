@@ -106,6 +106,8 @@ public class MemberNaming {
 
     abstract void write(Writer builder) throws IOException;
 
+    boolean isQualified() { return name.contains("."); }
+
     @Override
     public String toString() {
       try {

@@ -4,6 +4,7 @@
 package com.android.tools.r8;
 
 import com.android.tools.r8.debug.DebugTestConfig;
+import com.android.tools.r8.errors.Unimplemented;
 import com.android.tools.r8.utils.ListUtils;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -85,7 +86,7 @@ public abstract class TestBuilder<RR extends TestRunResult, T extends TestBuilde
   }
 
   public T addLibraryClasses(Collection<Class<?>> classes) {
-    return addLibraryFiles(getFilesForClasses(classes));
+    throw new Unimplemented("Unsupported addLibraryClasses");
   }
 
   public T addLibraryFiles(Path... files) {
