@@ -6,6 +6,7 @@ package com.android.tools.r8.resolution;
 import com.android.tools.r8.AsmTestBase;
 import com.android.tools.r8.dex.ApplicationReader;
 import com.android.tools.r8.graph.AppInfoWithSubtyping;
+import com.android.tools.r8.graph.AppServices;
 import com.android.tools.r8.graph.AppView;
 import com.android.tools.r8.graph.DexApplication;
 import com.android.tools.r8.graph.DexEncodedMethod;
@@ -107,7 +108,7 @@ public class SingleTargetLookupTest extends AsmTestBase {
     AppView<? extends AppInfoWithSubtyping> appView =
         new AppView<>(
             new AppInfoWithSubtyping(application), GraphLense.getIdentityLense(), options);
-
+    appView.setAppServices(AppServices.builder(appView).build());
     ExecutorService executor = Executors.newSingleThreadExecutor();
     RootSet rootSet =
         new RootSetBuilder(

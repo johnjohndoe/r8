@@ -7,6 +7,7 @@ import com.android.tools.r8.TestBase;
 import com.android.tools.r8.ToolHelper;
 import com.android.tools.r8.dex.ApplicationReader;
 import com.android.tools.r8.graph.AppInfoWithSubtyping;
+import com.android.tools.r8.graph.AppServices;
 import com.android.tools.r8.graph.AppView;
 import com.android.tools.r8.graph.DexApplication;
 import com.android.tools.r8.graph.GraphLense;
@@ -34,6 +35,7 @@ public abstract class NonNullTrackerTestBase extends TestBase {
     AppView<AppInfoWithSubtyping> appView =
         new AppView<>(
             new AppInfoWithSubtyping(dexApplication), GraphLense.getIdentityLense(), TEST_OPTIONS);
+    appView.setAppServices(AppServices.builder(appView).build());
     ExecutorService executorService = ThreadUtils.getExecutorService(TEST_OPTIONS);
     RootSet rootSet =
         new RootSetBuilder(

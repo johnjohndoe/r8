@@ -307,6 +307,7 @@ public class Enqueuer {
       GraphConsumer keptGraphConsumer,
       boolean forceProguardCompatibility,
       ProguardConfiguration.Builder compatibility) {
+    assert appView.appServices() != null;
     this.appInfo = appView.appInfo();
     this.appView = appView;
     this.compatibility = compatibility;
@@ -1146,6 +1147,7 @@ public class Enqueuer {
             encodedField.field);
       }
     }
+    processAnnotations(encodedField, encodedField.annotations.annotations);
     liveFields.add(encodedField, reason);
     collectProguardCompatibilityRule(reason);
     // Add all dependent members to the workqueue.
@@ -1159,6 +1161,7 @@ public class Enqueuer {
     if (Log.ENABLED) {
       Log.verbose(getClass(), "Adding instance field `%s` to live set.", field.field);
     }
+    processAnnotations(field, field.annotations.annotations);
     liveFields.add(field, reason);
     collectProguardCompatibilityRule(reason);
     // Add all dependent members to the workqueue.

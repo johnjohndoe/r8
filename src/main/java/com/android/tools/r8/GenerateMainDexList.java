@@ -6,6 +6,7 @@ package com.android.tools.r8;
 import com.android.tools.r8.dex.ApplicationReader;
 import com.android.tools.r8.experimental.graphinfo.GraphConsumer;
 import com.android.tools.r8.graph.AppInfoWithSubtyping;
+import com.android.tools.r8.graph.AppServices;
 import com.android.tools.r8.graph.AppView;
 import com.android.tools.r8.graph.DexApplication;
 import com.android.tools.r8.graph.DexReference;
@@ -47,6 +48,8 @@ public class GenerateMainDexList {
       AppView<? extends AppInfoWithSubtyping> appView =
           new AppView<>(
               new AppInfoWithSubtyping(application), GraphLense.getIdentityLense(), options);
+      appView.setAppServices(AppServices.builder(appView).build());
+
       RootSet mainDexRootSet =
           new RootSetBuilder(appView, application, options.mainDexKeepRules, options).run(executor);
 
