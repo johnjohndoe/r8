@@ -7,6 +7,7 @@ import com.android.tools.r8.graph.AppView;
 import com.android.tools.r8.graph.DexAnnotation;
 import com.android.tools.r8.graph.DexAnnotationSet;
 import com.android.tools.r8.graph.DexClass;
+import com.android.tools.r8.graph.DexClass.FieldSetter;
 import com.android.tools.r8.graph.DexClass.MethodSetter;
 import com.android.tools.r8.graph.DexEncodedAnnotation;
 import com.android.tools.r8.graph.DexEncodedField;
@@ -326,8 +327,8 @@ public class ProguardMapApplier {
       clazz.annotations = substituteTypesIn(clazz.annotations);
       fixupMethods(clazz.directMethods(), clazz::setDirectMethod);
       fixupMethods(clazz.virtualMethods(), clazz::setVirtualMethod);
-      clazz.setStaticFields(substituteTypesIn(clazz.staticFields()));
-      clazz.setInstanceFields(substituteTypesIn(clazz.instanceFields()));
+      fixupFields(clazz.staticFields(), clazz::setStaticField);
+      fixupFields(clazz.instanceFields(), clazz::setInstanceField);
     }
 
     private void fixupMethods(List<DexEncodedMethod> methods, MethodSetter setter) {
@@ -352,12 +353,12 @@ public class ProguardMapApplier {
       }
     }
 
-    private DexEncodedField[] substituteTypesIn(DexEncodedField[] fields) {
+    private void fixupFields(List<DexEncodedField> fields, FieldSetter setter) {
       if (fields == null) {
-        return null;
+        return;
       }
-      for (int i = 0; i < fields.length; i++) {
-        DexEncodedField encodedField = fields[i];
+      for (int i = 0; i < fields.size(); i++) {
+        DexEncodedField encodedField = fields.get(i);
         DexField appliedField = appliedLense.lookupField(encodedField.field);
         DexType newHolderType = substituteType(appliedField.clazz, null);
         DexType newFieldType = substituteType(appliedField.type, null);
@@ -370,9 +371,8 @@ public class ProguardMapApplier {
           newField = appliedField;
         }
         // Explicitly fix members.
-        fields[i] = encodedField.toTypeSubstitutedField(newField);
+        setter.setField(i, encodedField.toTypeSubstitutedField(newField));
       }
-      return fields;
     }
 
     private DexProto substituteTypesIn(DexProto proto, DexEncodedMethod context) {

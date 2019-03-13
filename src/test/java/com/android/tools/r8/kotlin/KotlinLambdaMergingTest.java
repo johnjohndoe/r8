@@ -242,7 +242,7 @@ public class KotlinLambdaMergingTest extends AbstractR8KotlinTestBase {
 
   private static int getLambdaSingletons(DexClass clazz) {
     assertEquals(1, clazz.interfaces.size());
-    return clazz.staticFields().length;
+    return clazz.staticFields().size();
   }
 
   private static boolean isLambdaOrGroup(DexClass clazz) {

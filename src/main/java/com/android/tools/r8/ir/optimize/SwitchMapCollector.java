@@ -19,7 +19,6 @@ import com.android.tools.r8.shaking.Enqueuer.AppInfoWithLiveness;
 import com.android.tools.r8.utils.InternalOptions;
 import it.unimi.dsi.fastutil.ints.Int2ReferenceArrayMap;
 import it.unimi.dsi.fastutil.ints.Int2ReferenceMap;
-import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -93,7 +92,7 @@ public class SwitchMapCollector {
     if (!clazz.accessFlags.isSynthetic() && !clazz.hasClassInitializer()) {
       return;
     }
-    List<DexEncodedField> switchMapFields = Arrays.stream(clazz.staticFields())
+    List<DexEncodedField> switchMapFields = clazz.staticFields().stream()
         .filter(this::maybeIsSwitchMap).collect(Collectors.toList());
     if (!switchMapFields.isEmpty()) {
       IRCode initializer =
