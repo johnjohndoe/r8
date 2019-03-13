@@ -4,6 +4,8 @@
 package com.android.tools.r8;
 
 import static com.android.tools.r8.TestBase.Backend.DEX;
+import static com.android.tools.r8.utils.codeinspector.Matchers.isPresent;
+import static org.junit.Assert.assertThat;
 
 import com.android.tools.r8.TestBase.Backend;
 import com.android.tools.r8.ToolHelper.DexVm;
@@ -13,6 +15,7 @@ import com.android.tools.r8.debug.DebugTestConfig;
 import com.android.tools.r8.debug.DexDebugTestConfig;
 import com.android.tools.r8.errors.Unreachable;
 import com.android.tools.r8.utils.AndroidApp;
+import com.android.tools.r8.utils.codeinspector.ClassSubject;
 import com.android.tools.r8.utils.codeinspector.CodeInspector;
 import com.google.common.collect.ImmutableList;
 import java.io.IOException;
@@ -43,16 +46,18 @@ public abstract class TestCompileResult<
 
   protected abstract RR createRunResult(ProcessResult result);
 
-  public RR run(Class<?> mainClass) throws IOException {
+  public RR run(Class<?> mainClass) throws ExecutionException, IOException {
     return run(mainClass.getTypeName());
   }
 
-  public RR run(String mainClass) throws IOException {
+  public RR run(String mainClass) throws ExecutionException, IOException {
+    ClassSubject mainClassSubject = inspector().clazz(mainClass);
+    assertThat(mainClassSubject, isPresent());
     switch (getBackend()) {
       case DEX:
-        return runArt(additionalRunClassPath, mainClass);
+        return runArt(additionalRunClassPath, mainClassSubject.getFinalName());
       case CF:
-        return runJava(additionalRunClassPath, mainClass);
+        return runJava(additionalRunClassPath, mainClassSubject.getFinalName());
       default:
         throw new Unreachable();
     }

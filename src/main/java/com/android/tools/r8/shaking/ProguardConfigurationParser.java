@@ -177,7 +177,7 @@ public class ProguardConfigurationParser {
     reporter.failIfPendingErrors();
   }
 
-  private static enum IdentifierType {
+  private enum IdentifierType {
     CLASS_NAME,
     ANY
   }
@@ -292,7 +292,11 @@ public class ProguardConfigurationParser {
           configurationBuilder.setPackagePrefix(parsePackageNameOrEmptyString());
           expectClosingQuote(quote);
         } else {
-          configurationBuilder.setPackagePrefix("");
+          if (hasNextChar('-')) {
+            configurationBuilder.setPackagePrefix("");
+          } else {
+            configurationBuilder.setPackagePrefix(parsePackageNameOrEmptyString());
+          }
         }
       } else if (acceptString("flattenpackagehierarchy")) {
         if (configurationBuilder.getPackageObfuscationMode() == PackageObfuscationMode.REPACKAGE) {
@@ -308,7 +312,11 @@ public class ProguardConfigurationParser {
             configurationBuilder.setFlattenPackagePrefix(parsePackageNameOrEmptyString());
             expectClosingQuote(quote);
           } else {
-            configurationBuilder.setFlattenPackagePrefix("");
+            if (hasNextChar('-')) {
+              configurationBuilder.setFlattenPackagePrefix("");
+            } else {
+              configurationBuilder.setFlattenPackagePrefix(parsePackageNameOrEmptyString());
+            }
           }
         }
       } else if (acceptString("overloadaggressively")) {

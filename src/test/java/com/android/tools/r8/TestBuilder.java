@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.concurrent.ExecutionException;
 
 public abstract class TestBuilder<RR extends TestRunResult, T extends TestBuilder<RR, T>> {
 
@@ -35,9 +36,10 @@ public abstract class TestBuilder<RR extends TestRunResult, T extends TestBuilde
   }
 
   public abstract RR run(String mainClass)
-      throws IOException, CompilationFailedException;
+      throws CompilationFailedException, ExecutionException, IOException;
 
-  public RR run(Class mainClass) throws IOException, CompilationFailedException {
+  public RR run(Class mainClass)
+      throws CompilationFailedException, ExecutionException, IOException {
     return run(mainClass.getTypeName());
   }
 
