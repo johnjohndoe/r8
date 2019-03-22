@@ -110,14 +110,13 @@ public class MethodPoolCollection {
         }
       }
       if (clazz.isInterface()) {
-        clazz.type.forAllImplementsSubtypes(
-            implementer -> {
-              DexClass subClazz = application.definitionFor(implementer);
-              if (subClazz != null) {
-                MethodPool childPool = methodPools.computeIfAbsent(subClazz, k -> new MethodPool());
-                childPool.linkInterface(methodPool);
-              }
-            });
+        for (DexType subtype : clazz.type.allImmediateSubtypes()) {
+          DexClass subClazz = application.definitionFor(subtype);
+          if (subClazz != null) {
+            MethodPool childPool = methodPools.computeIfAbsent(subClazz, k -> new MethodPool());
+            childPool.linkInterface(methodPool);
+          }
+        }
       }
     };
   }
