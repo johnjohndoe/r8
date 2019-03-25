@@ -335,6 +335,7 @@ def x20Dependencies = [
         "benchmarks/kotlin-benches",
         "chrome",
         "desugar/desugar_20180308",
+        "internal/issue-127524985",
         "framework",
         "gmail/gmail_android_170604.16",
         "gmail/gmail_android_180826.15",

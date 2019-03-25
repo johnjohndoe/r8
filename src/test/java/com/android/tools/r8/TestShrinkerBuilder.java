@@ -114,6 +114,10 @@ public abstract class TestShrinkerBuilder<
     return self();
   }
 
+  public T addKeepAllAttributes() {
+    return addKeepRules("-keepattributes *");
+  }
+
   private static String getMethodLine(MethodReference method) {
     // Should we encode modifiers in method references?
     StringBuilder builder = new StringBuilder();

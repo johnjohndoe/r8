@@ -473,6 +473,11 @@ public abstract class Instruction implements InstructionOrPhi {
         return false;
       }
     }
+    // Finally check that the dex instructions for the generated code actually are the same.
+    if (allocator.getOptions().isGeneratingDex()
+        && !DexBuilder.identicalInstructionsAfterBuildingDexCode(this, other, allocator)) {
+      return false;
+    }
     return true;
   }
 
