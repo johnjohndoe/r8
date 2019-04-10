@@ -1031,6 +1031,15 @@ public class DexItemFactory {
     return method.name == classConstructorMethodName;
   }
 
+  public void clearReferenceTypeLatticeElementsCache() {
+    referenceTypeLatticeElements.clear();
+  }
+
+  public boolean verifyNoCachedReferenceTypeLatticeElements() {
+    assert referenceTypeLatticeElements.isEmpty();
+    return true;
+  }
+
   public ReferenceTypeLatticeElement createReferenceTypeLatticeElement(
       DexType type, boolean isNullable, AppInfo appInfo) {
     ReferenceTypeLatticeElement typeLattice = referenceTypeLatticeElements.get(type);
