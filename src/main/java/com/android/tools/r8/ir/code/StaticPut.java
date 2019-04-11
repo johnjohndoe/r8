@@ -20,6 +20,7 @@ import com.android.tools.r8.ir.conversion.CfBuilder;
 import com.android.tools.r8.ir.conversion.DexBuilder;
 import com.android.tools.r8.ir.optimize.Inliner.ConstraintWithTarget;
 import com.android.tools.r8.ir.optimize.InliningConstraints;
+import com.android.tools.r8.ir.regalloc.RegisterAllocator;
 import org.objectweb.asm.Opcodes;
 
 public class StaticPut extends FieldInstruction {
@@ -86,6 +87,26 @@ public class StaticPut extends FieldInstruction {
   public int maxOutValueRegister() {
     assert false : "StaticPut instructions define no values.";
     return 0;
+  }
+
+  @Override
+  public boolean identicalAfterRegisterAllocation(Instruction other, RegisterAllocator allocator) {
+    if (!super.identicalAfterRegisterAllocation(other, allocator)) {
+      return false;
+    }
+
+    if (allocator.getOptions().canHaveIncorrectJoinForArrayOfInterfacesBug()) {
+      StaticPut staticPut = other.asStaticPut();
+
+      // If the value being written by this instruction is an array, then make sure that the value
+      // being written by the other instruction is the exact same value. Otherwise, the verifier
+      // may incorrectly join the types of these arrays to Object[].
+      if (inValue().getTypeLattice().isArrayType() && inValue() != staticPut.inValue()) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   @Override

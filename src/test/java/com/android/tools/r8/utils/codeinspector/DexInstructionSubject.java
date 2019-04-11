@@ -4,6 +4,13 @@
 
 package com.android.tools.r8.utils.codeinspector;
 
+import com.android.tools.r8.code.Aput;
+import com.android.tools.r8.code.AputBoolean;
+import com.android.tools.r8.code.AputByte;
+import com.android.tools.r8.code.AputChar;
+import com.android.tools.r8.code.AputObject;
+import com.android.tools.r8.code.AputShort;
+import com.android.tools.r8.code.AputWide;
 import com.android.tools.r8.code.CheckCast;
 import com.android.tools.r8.code.Const;
 import com.android.tools.r8.code.Const16;
@@ -351,6 +358,17 @@ public class DexInstructionSubject implements InstructionSubject {
         || instruction instanceof MulLong2Addr
         || instruction instanceof MulDouble
         || instruction instanceof MulDouble2Addr;
+  }
+
+  @Override
+  public boolean isArrayPut() {
+    return instruction instanceof Aput
+        || instruction instanceof AputBoolean
+        || instruction instanceof AputByte
+        || instruction instanceof AputChar
+        || instruction instanceof AputObject
+        || instruction instanceof AputShort
+        || instruction instanceof AputWide;
   }
 
   @Override

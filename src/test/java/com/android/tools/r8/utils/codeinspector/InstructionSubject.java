@@ -80,6 +80,8 @@ public interface InstructionSubject {
 
   boolean isMultiplication();
 
+  boolean isArrayPut();
+
   boolean isMonitorEnter();
 
   boolean isMonitorExit();

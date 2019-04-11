@@ -4,9 +4,8 @@
 
 package com.android.tools.r8.utils.codeinspector;
 
-import static org.junit.Assert.assertTrue;
-
 import com.android.tools.r8.cf.code.CfArithmeticBinop;
+import com.android.tools.r8.cf.code.CfArrayStore;
 import com.android.tools.r8.cf.code.CfCheckCast;
 import com.android.tools.r8.cf.code.CfConstClass;
 import com.android.tools.r8.cf.code.CfConstNull;
@@ -31,7 +30,6 @@ import com.android.tools.r8.cf.code.CfReturnVoid;
 import com.android.tools.r8.cf.code.CfStackInstruction;
 import com.android.tools.r8.cf.code.CfSwitch;
 import com.android.tools.r8.cf.code.CfThrow;
-import com.android.tools.r8.graph.CfCode;
 import com.android.tools.r8.graph.DexField;
 import com.android.tools.r8.graph.DexMethod;
 import com.android.tools.r8.ir.code.Monitor.Type;
@@ -274,6 +272,11 @@ public class CfInstructionSubject implements InstructionSubject {
     }
     CfMonitor monitor = (CfMonitor) instruction;
     return monitor.getType() == Type.EXIT;
+  }
+
+  @Override
+  public boolean isArrayPut() {
+    return instruction instanceof CfArrayStore;
   }
 
   @Override
