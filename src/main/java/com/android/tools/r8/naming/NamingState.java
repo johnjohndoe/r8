@@ -193,6 +193,21 @@ class NamingState<ProtoType extends CachedHashValueDexItem, KeyType> {
       reservedNames.add(name);
     }
 
+    public int incrementAndGet() {
+      int parentNameCount = 0;
+      InternalState tmp = parentInternalState;
+      while (tmp != null) {
+        if (tmp.nameCount > parentNameCount) {
+          parentNameCount = tmp.nameCount;
+        }
+        tmp = tmp.parentInternalState;
+      }
+      if (parentNameCount > nameCount) {
+        nameCount = parentNameCount;
+      }
+      return nameCount++;
+    }
+
     DexString getAssignedNameFor(DexString original, KeyType proto) {
       DexString result = null;
       if (renamings != null) {
@@ -240,7 +255,7 @@ class NamingState<ProtoType extends CachedHashValueDexItem, KeyType> {
       if (dictionaryIterator.hasNext()) {
         return dictionaryIterator.next();
       } else {
-        return StringUtils.numberToIdentifier(EMPTY_CHAR_ARRAY, nameCount++, false);
+        return StringUtils.numberToIdentifier(EMPTY_CHAR_ARRAY, incrementAndGet(), false);
       }
     }
 
