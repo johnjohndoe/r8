@@ -69,7 +69,6 @@ public class RootSetBuilder {
   private final Set<DexReference> noOptimization = Sets.newIdentityHashSet();
   private final Set<DexReference> noObfuscation = Sets.newIdentityHashSet();
   private final LinkedHashMap<DexReference, DexReference> reasonAsked = new LinkedHashMap<>();
-  private final Set<DexReference> keepPackageName = Sets.newIdentityHashSet();
   private final Set<ProguardConfigurationRule> rulesThatUseExtendsOrImplementsWrong =
       Sets.newIdentityHashSet();
   private final Set<DexReference> checkDiscarded = Sets.newIdentityHashSet();
@@ -179,8 +178,7 @@ public class RootSetBuilder {
           markMatchingFields(clazz, memberKeepRules, rule, preconditionSupplier);
           markMatchingMethods(clazz, memberKeepRules, rule, preconditionSupplier);
         }
-      } else if (rule instanceof ProguardWhyAreYouKeepingRule
-          || rule instanceof ProguardKeepPackageNamesRule) {
+      } else if (rule instanceof ProguardWhyAreYouKeepingRule) {
         markClass(clazz, rule);
         markMatchingVisibleMethods(clazz, memberKeepRules, rule, null, true);
         markMatchingVisibleFields(clazz, memberKeepRules, rule, null, true);
@@ -264,7 +262,6 @@ public class RootSetBuilder {
         noOptimization,
         noObfuscation,
         ImmutableList.copyOf(reasonAsked.values()),
-        keepPackageName,
         checkDiscarded,
         alwaysInline,
         forceInline,
@@ -946,8 +943,6 @@ public class RootSetBuilder {
       noSideEffects.put(item.toReference(), rule);
     } else if (context instanceof ProguardWhyAreYouKeepingRule) {
       reasonAsked.computeIfAbsent(item.toReference(), i -> i);
-    } else if (context instanceof ProguardKeepPackageNamesRule) {
-      keepPackageName.add(item.toReference());
     } else if (context instanceof ProguardAssumeValuesRule) {
       assumedValues.put(item.toReference(), rule);
     } else if (context instanceof ProguardCheckDiscardRule) {
@@ -1011,7 +1006,6 @@ public class RootSetBuilder {
     public final Set<DexReference> noOptimization;
     public final Set<DexReference> noObfuscation;
     public final ImmutableList<DexReference> reasonAsked;
-    public final Set<DexReference> keepPackageName;
     public final Set<DexReference> checkDiscarded;
     public final Set<DexMethod> alwaysInline;
     public final Set<DexMethod> forceInline;
@@ -1032,7 +1026,6 @@ public class RootSetBuilder {
         Set<DexReference> noOptimization,
         Set<DexReference> noObfuscation,
         ImmutableList<DexReference> reasonAsked,
-        Set<DexReference> keepPackageName,
         Set<DexReference> checkDiscarded,
         Set<DexMethod> alwaysInline,
         Set<DexMethod> forceInline,
@@ -1050,7 +1043,6 @@ public class RootSetBuilder {
       this.noOptimization = noOptimization;
       this.noObfuscation = noObfuscation;
       this.reasonAsked = reasonAsked;
-      this.keepPackageName = Collections.unmodifiableSet(keepPackageName);
       this.checkDiscarded = Collections.unmodifiableSet(checkDiscarded);
       this.alwaysInline = Collections.unmodifiableSet(alwaysInline);
       this.forceInline = Collections.unmodifiableSet(forceInline);
@@ -1071,7 +1063,6 @@ public class RootSetBuilder {
       this.noOptimization = lense.rewriteMutableReferencesConservatively(previous.noOptimization);
       this.noObfuscation = lense.rewriteMutableReferencesConservatively(previous.noObfuscation);
       this.reasonAsked = lense.rewriteReferencesConservatively(previous.reasonAsked);
-      this.keepPackageName = lense.rewriteReferencesConservatively(previous.keepPackageName);
       this.checkDiscarded = lense.rewriteReferencesConservatively(previous.checkDiscarded);
       this.alwaysInline = lense.rewriteMethodsConservatively(previous.alwaysInline);
       this.forceInline = lense.rewriteMethodsConservatively(previous.forceInline);
@@ -1310,7 +1301,6 @@ public class RootSetBuilder {
       builder.append("\nnoOptimization: " + noOptimization.size());
       builder.append("\nnoObfuscation: " + noObfuscation.size());
       builder.append("\nreasonAsked: " + reasonAsked.size());
-      builder.append("\nkeepPackageName: " + keepPackageName.size());
       builder.append("\ncheckDiscarded: " + checkDiscarded.size());
       builder.append("\nnoSideEffects: " + noSideEffects.size());
       builder.append("\nassumedValues: " + assumedValues.size());

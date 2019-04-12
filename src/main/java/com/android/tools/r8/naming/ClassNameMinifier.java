@@ -21,11 +21,11 @@ import com.android.tools.r8.graph.DexType;
 import com.android.tools.r8.graph.InnerClassAttribute;
 import com.android.tools.r8.naming.signature.GenericSignatureRewriter;
 import com.android.tools.r8.shaking.Enqueuer.AppInfoWithLiveness;
+import com.android.tools.r8.shaking.ProguardPackageNameList;
 import com.android.tools.r8.shaking.RootSetBuilder.RootSet;
 import com.android.tools.r8.utils.DescriptorUtils;
 import com.android.tools.r8.utils.InternalOptions;
 import com.android.tools.r8.utils.InternalOptions.PackageObfuscationMode;
-import com.android.tools.r8.utils.Reporter;
 import com.android.tools.r8.utils.StringUtils;
 import com.android.tools.r8.utils.Timing;
 import com.google.common.collect.ImmutableMap;
@@ -44,7 +44,6 @@ class ClassNameMinifier {
 
   private final AppView<AppInfoWithLiveness> appView;
   private final AppInfoWithLiveness appInfo;
-  private final Reporter reporter;
   private final PackageObfuscationMode packageObfuscationMode;
   private final boolean isAccessModificationAllowed;
   private final Set<String> noObfuscationPrefixes = Sets.newHashSet();
@@ -58,7 +57,6 @@ class ClassNameMinifier {
   private final boolean keepInnerClassStructure;
 
   private final Set<DexType> noObfuscationTypes;
-  private final Set<DexType> keepPackageName;
 
   private final Namespace topLevelState;
 
@@ -66,7 +64,6 @@ class ClassNameMinifier {
     this.appView = appView;
     this.appInfo = appView.appInfo();
     InternalOptions options = appView.options();
-    this.reporter = options.reporter;
     this.packageObfuscationMode = options.getProguardConfiguration().getPackageObfuscationMode();
     this.isAccessModificationAllowed =
         options.getProguardConfiguration().isAccessModificationAllowed();
@@ -74,11 +71,7 @@ class ClassNameMinifier {
     this.classDictionary = options.getProguardConfiguration().getClassObfuscationDictionary();
     this.keepInnerClassStructure = options.getProguardConfiguration().getKeepAttributes().signature;
     this.noObfuscationTypes =
-        DexReference.filterDexType(rootSet.noObfuscation.stream())
-            .collect(Collectors.toSet());
-    this.keepPackageName =
-        DexReference.filterDexType(rootSet.keepPackageName.stream())
-            .collect(Collectors.toSet());
+        DexReference.filterDexType(rootSet.noObfuscation.stream()).collect(Collectors.toSet());
 
     // Initialize top-level naming state.
     topLevelState = new Namespace(
@@ -257,8 +250,9 @@ class ClassNameMinifier {
     String packageName = getPackageBinaryNameFromJavaType(type.getPackageDescriptor());
     // Check whether the given class should be kept.
     // or check whether the given class belongs to a package that is kept for another class.
-    if (keepPackageName.contains(type)
-        || noObfuscationPrefixes.contains(packageName)) {
+    ProguardPackageNameList keepPackageNames =
+        appView.options().getProguardConfiguration().getKeepPackageNamesPatterns();
+    if (noObfuscationPrefixes.contains(packageName) || keepPackageNames.matches(type)) {
       return states.computeIfAbsent(packageName, Namespace::new);
     }
     Namespace state = topLevelState;

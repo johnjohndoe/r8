@@ -38,6 +38,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -178,6 +179,7 @@ public class ProguardConfigurationParser {
   }
 
   private enum IdentifierType {
+    PACKAGE_NAME,
     CLASS_NAME,
     ANY
   }
@@ -232,8 +234,7 @@ public class ProguardConfigurationParser {
       } else if (acceptString("keepattributes")) {
         parseKeepAttributes();
       } else if (acceptString("keeppackagenames")) {
-        ProguardKeepPackageNamesRule rule = parseKeepPackageNamesRule(optionStart);
-        configurationBuilder.addRule(rule);
+        parsePackageFilter(configurationBuilder::addKeepPackageNamesPattern);
       } else if (acceptString("keepparameternames")) {
         configurationBuilder.setKeepParameterNames(true, origin, getPosition(optionStart));
       } else if (acceptString("checkdiscard")) {
@@ -604,17 +605,6 @@ public class ProguardConfigurationParser {
           .setOrigin(origin)
           .setStart(start);
       parseClassSpec(keepRuleBuilder, false);
-      Position end = getPosition();
-      keepRuleBuilder.setSource(getSourceSnippet(contents, start, end));
-      keepRuleBuilder.setEnd(end);
-      return keepRuleBuilder.build();
-    }
-
-    private ProguardKeepPackageNamesRule parseKeepPackageNamesRule(Position start)
-        throws ProguardRuleParserException {
-      ProguardKeepPackageNamesRule.Builder keepRuleBuilder =
-          ProguardKeepPackageNamesRule.builder().setOrigin(origin).setStart(start);
-      keepRuleBuilder.setClassNames(parseClassNames());
       Position end = getPosition();
       keepRuleBuilder.setSource(getSourceSnippet(contents, start, end));
       keepRuleBuilder.setEnd(end);
@@ -1441,6 +1431,13 @@ public class ProguardConfigurationParser {
                 || codePoint == '['
                 || codePoint == ']';
 
+    private final Predicate<Integer> PACKAGE_NAME_PREDICATE =
+        codePoint ->
+            IdentifierUtils.isDexIdentifierPart(codePoint)
+                || codePoint == '.'
+                || codePoint == '*'
+                || codePoint == '?';
+
     private String acceptClassName() {
       return acceptString(CLASS_NAME_PREDICATE);
     }
@@ -1539,9 +1536,11 @@ public class ProguardConfigurationParser {
         } else if (current == '?' || current == '%') {
           wildcardsCollector.add(new ProguardWildcard.Pattern(String.valueOf((char) current)));
           end += Character.charCount(current);
-        } else if (CLASS_NAME_PREDICATE.test(current) || current == '>') {
+        } else if (kind == IdentifierType.PACKAGE_NAME
+            ? PACKAGE_NAME_PREDICATE.test(current)
+            : (CLASS_NAME_PREDICATE.test(current) || current == '>')) {
           end += Character.charCount(current);
-        } else if (current == '<') {
+        } else if (kind != IdentifierType.PACKAGE_NAME && current == '<') {
           currentBackreference = new StringBuilder();
           end += Character.charCount(current);
         } else {
@@ -1648,6 +1647,25 @@ public class ProguardConfigurationParser {
       position -= expected.length();
       for (int i = 0; i < expected.length(); i++) {
         assert expected.charAt(i) == contents.charAt(position + i);
+      }
+    }
+
+    private void parsePackageFilter(BiConsumer<Boolean, ProguardPackageMatcher> consumer)
+        throws ProguardRuleParserException {
+      skipWhitespace();
+      if (isOptionalArgumentGiven()) {
+        do {
+          IdentifierPatternWithWildcardsAndNegation name =
+              acceptIdentifierWithBackreference(IdentifierType.PACKAGE_NAME, true);
+          if (name == null) {
+            throw parseError("Package name expected");
+          }
+          consumer.accept(
+              name.negated, new ProguardPackageMatcher(name.patternWithWildcards.pattern));
+          skipWhitespace();
+        } while (acceptChar(','));
+      } else {
+        consumer.accept(false, new ProguardPackageMatcher("**"));
       }
     }
 
