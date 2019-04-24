@@ -194,7 +194,7 @@ public class IRConverter {
     if (enableWholeProgramOptimizations) {
       assert appInfo.hasLiveness();
       AppInfoWithLiveness appInfoWithLiveness = appInfo.withLiveness();
-      AppView<? extends AppInfoWithLiveness> appViewWithLiveness = appView.withLiveness();
+      AppView<AppInfoWithLiveness> appViewWithLiveness = appView.withLiveness();
       assert rootSet != null;
       this.nonNullTracker = new NonNullTracker(
           appInfoWithLiveness, libraryMethodsReturningNonNull(appInfo.dexItemFactory));
@@ -213,7 +213,7 @@ public class IRConverter {
           options.enableDevirtualization ? new Devirtualizer(appViewWithLiveness) : null;
       this.uninstantiatedTypeOptimization =
           options.enableUninstantiatedTypeOptimization
-              ? new UninstantiatedTypeOptimization(appViewWithLiveness, options)
+              ? new UninstantiatedTypeOptimization(appViewWithLiveness)
               : null;
       this.typeChecker = new TypeChecker(appView);
     } else {

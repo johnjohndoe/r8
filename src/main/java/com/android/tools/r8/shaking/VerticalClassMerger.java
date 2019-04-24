@@ -202,9 +202,7 @@ public class VerticalClassMerger {
   private final AppInfoWithLiveness appInfo;
   private final AppView<? extends AppInfoWithLiveness> appView;
   private final ExecutorService executorService;
-  private final GraphLense graphLense;
   private final MethodPoolCollection methodPoolCollection;
-  private final InternalOptions options;
   private final Timing timing;
   private Collection<DexMethod> invokes;
 
@@ -239,9 +237,7 @@ public class VerticalClassMerger {
     this.appInfo = appView.appInfo();
     this.appView = appView;
     this.executorService = executorService;
-    this.graphLense = appView.graphLense();
-    this.methodPoolCollection = new MethodPoolCollection(application);
-    this.options = options;
+    this.methodPoolCollection = new MethodPoolCollection(appView);
     this.renamedMembersLense = new VerticalClassMergerGraphLense.Builder();
     this.timing = timing;
     this.mainDexClasses = mainDexClasses;
@@ -607,7 +603,7 @@ public class VerticalClassMerger {
 
   public GraphLense run() {
     timing.begin("merge");
-    GraphLense mergingGraphLense = mergeClasses(graphLense);
+    GraphLense mergingGraphLense = mergeClasses();
     timing.end();
     timing.begin("fixup");
     GraphLense result = new TreeFixer().fixupTypeReferences(mergingGraphLense);
@@ -683,13 +679,14 @@ public class VerticalClassMerger {
     return true;
   }
 
-  private GraphLense mergeClasses(GraphLense graphLense) {
+  private GraphLense mergeClasses() {
     // Visit the program classes in a top-down order according to the class hierarchy.
-    TopDownClassHierarchyTraversal.visit(appView, mergeCandidates, this::mergeClassIfPossible);
+    TopDownClassHierarchyTraversal.forProgramClasses(appView)
+        .visit(mergeCandidates, this::mergeClassIfPossible);
     if (Log.ENABLED) {
       Log.debug(getClass(), "Merged %d classes.", mergedClasses.size());
     }
-    return renamedMembersLense.build(graphLense, mergedClasses, appInfo);
+    return renamedMembersLense.build(appView.graphLense(), mergedClasses, appInfo);
   }
 
   private boolean methodResolutionMayChange(DexClass source, DexClass target) {
@@ -1189,7 +1186,7 @@ public class VerticalClassMerger {
       SynthesizedBridgeCode code =
           new SynthesizedBridgeCode(
               newMethod,
-              graphLense.getOriginalMethodSignature(method.method),
+              appView.graphLense().getOriginalMethodSignature(method.method),
               invocationTarget.method,
               invocationTarget.isPrivateMethod() ? DIRECT : STATIC);
 
@@ -1625,7 +1622,7 @@ public class VerticalClassMerger {
   }
 
   private boolean disallowInlining(DexEncodedMethod method, DexType invocationContext) {
-    if (options.enableInlining) {
+    if (appView.options().enableInlining) {
       if (method.getCode().isJarCode()) {
         JarCode jarCode = method.getCode().asJarCode();
         ConstraintWithTarget constraint =
@@ -1686,7 +1683,7 @@ public class VerticalClassMerger {
     public GraphLenseLookupResult lookupMethod(DexMethod method, DexMethod context, Type type) {
       // First look up the method using the existing graph lense (for example, the type will have
       // changed if the method was publicized by ClassAndMemberPublicizer).
-      GraphLenseLookupResult lookup = graphLense.lookupMethod(method, context, type);
+      GraphLenseLookupResult lookup = appView.graphLense().lookupMethod(method, context, type);
       DexMethod previousMethod = lookup.getMethod();
       Type previousType = lookup.getType();
       // Then check if there is a renaming due to the vertical class merger.

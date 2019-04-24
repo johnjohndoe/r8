@@ -484,14 +484,14 @@ public class R8 {
           if (options.enableUninstantiatedTypeOptimization) {
             timing.begin("UninstantiatedTypeOptimization");
             appView.setGraphLense(
-                new UninstantiatedTypeOptimization(appViewWithLiveness, options)
-                    .run(new MethodPoolCollection(application), executorService, timing));
+                new UninstantiatedTypeOptimization(appViewWithLiveness)
+                    .run(new MethodPoolCollection(appView), executorService, timing));
             application = application.asDirect().rewrittenWithLense(appView.graphLense());
-            timing.end();
             appViewWithLiveness.setAppInfo(
                 appViewWithLiveness
                     .appInfo()
                     .rewrittenWithLense(application.asDirect(), appView.graphLense()));
+            timing.end();
           }
         }
 

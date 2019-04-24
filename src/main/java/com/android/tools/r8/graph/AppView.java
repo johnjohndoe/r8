@@ -8,7 +8,7 @@ import com.android.tools.r8.shaking.Enqueuer.AppInfoWithLiveness;
 import com.android.tools.r8.shaking.VerticalClassMerger.VerticallyMergedClasses;
 import com.android.tools.r8.utils.InternalOptions;
 
-public class AppView<T extends AppInfo> {
+public class AppView<T extends AppInfo> implements DexDefinitionSupplier {
 
   private T appInfo;
   private AppServices appServices;
@@ -40,6 +40,27 @@ public class AppView<T extends AppInfo> {
     this.appServices = appServices;
   }
 
+  @Override
+  public final DexDefinition definitionFor(DexReference reference) {
+    return appInfo().definitionFor(reference);
+  }
+
+  @Override
+  public final DexEncodedField definitionFor(DexField field) {
+    return appInfo().definitionFor(field);
+  }
+
+  @Override
+  public final DexEncodedMethod definitionFor(DexMethod method) {
+    return appInfo().definitionFor(method);
+  }
+
+  @Override
+  public final DexClass definitionFor(DexType type) {
+    return appInfo().definitionFor(type);
+  }
+
+  @Override
   public DexItemFactory dexItemFactory() {
     return dexItemFactory;
   }

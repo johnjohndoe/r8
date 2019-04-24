@@ -4,7 +4,8 @@
 
 package com.android.tools.r8.ir.optimize;
 
-import com.android.tools.r8.graph.DexApplication;
+import com.android.tools.r8.graph.AppInfo;
+import com.android.tools.r8.graph.AppView;
 import com.android.tools.r8.graph.DexClass;
 import com.android.tools.r8.graph.DexMethod;
 import com.android.tools.r8.graph.DexType;
@@ -34,19 +35,18 @@ public class MethodPoolCollection {
 
   private static final Equivalence<DexMethod> equivalence = MethodSignatureEquivalence.get();
 
-  private final DexApplication application;
+  private final AppView<? extends AppInfo> appView;
   private final Map<DexClass, MethodPool> methodPools = new ConcurrentHashMap<>();
 
-  public MethodPoolCollection(DexApplication application) {
-    this.application = application;
+  public MethodPoolCollection(AppView<? extends AppInfo> appView) {
+    this.appView = appView;
   }
 
   public void buildAll(ExecutorService executorService, Timing timing) throws ExecutionException {
     timing.begin("Building method pool collection");
     try {
       List<Future<?>> futures = new ArrayList<>();
-      @SuppressWarnings("unchecked")
-      List<DexClass> classes = (List) application.classes();
+      Iterable<? extends DexClass> classes = appView.appInfo().classes();
       submitAll(classes, futures, executorService);
       ThreadUtils.awaitFutures(futures);
     } finally {
@@ -85,7 +85,9 @@ public class MethodPoolCollection {
   }
 
   private void submitAll(
-      Iterable<DexClass> classes, List<Future<?>> futures, ExecutorService executorService) {
+      Iterable<? extends DexClass> classes,
+      List<Future<?>> futures,
+      ExecutorService executorService) {
     for (DexClass clazz : classes) {
       futures.add(executorService.submit(computeMethodPoolPerClass(clazz)));
     }
@@ -102,7 +104,7 @@ public class MethodPoolCollection {
             }
           });
       if (clazz.superType != null) {
-        DexClass superClazz = application.definitionFor(clazz.superType);
+        DexClass superClazz = appView.definitionFor(clazz.superType);
         if (superClazz != null) {
           MethodPool superPool = methodPools.computeIfAbsent(superClazz, k -> new MethodPool());
           superPool.linkSubtype(methodPool);
@@ -111,9 +113,10 @@ public class MethodPoolCollection {
       }
       if (clazz.isInterface()) {
         for (DexType subtype : clazz.type.allImmediateSubtypes()) {
-          DexClass subClazz = application.definitionFor(subtype);
+          DexClass subClazz = appView.definitionFor(subtype);
           if (subClazz != null) {
             MethodPool childPool = methodPools.computeIfAbsent(subClazz, k -> new MethodPool());
+            methodPool.linkSubtype(childPool);
             childPool.linkInterface(methodPool);
           }
         }
@@ -133,10 +136,10 @@ public class MethodPoolCollection {
       }
       if (superTypes.add(clazz)) {
         if (clazz.superType != null) {
-          addNonNull(worklist, application.definitionFor(clazz.superType));
+          addNonNull(worklist, appView.definitionFor(clazz.superType));
         }
         for (DexType interfaceType : clazz.interfaces.values) {
-          addNonNull(worklist, application.definitionFor(interfaceType));
+          addNonNull(worklist, appView.definitionFor(interfaceType));
         }
       }
     }
@@ -147,20 +150,18 @@ public class MethodPoolCollection {
       DexClass subject, Predicate<DexClass> stoppingCriterion) {
     Set<DexClass> subTypes = new HashSet<>();
     Deque<DexClass> worklist = new ArrayDeque<>();
-    subject.type.forAllExtendsSubtypes(
-        type -> addNonNull(worklist, application.definitionFor(type)));
+    subject.type.forAllExtendsSubtypes(type -> addNonNull(worklist, appView.definitionFor(type)));
     subject.type.forAllImplementsSubtypes(
-        type -> addNonNull(worklist, application.definitionFor(type)));
+        type -> addNonNull(worklist, appView.definitionFor(type)));
     while (!worklist.isEmpty()) {
       DexClass clazz = worklist.pop();
       if (stoppingCriterion.test(clazz)) {
         continue;
       }
       if (subTypes.add(clazz)) {
-        clazz.type.forAllExtendsSubtypes(
-            type -> addNonNull(worklist, application.definitionFor(type)));
+        clazz.type.forAllExtendsSubtypes(type -> addNonNull(worklist, appView.definitionFor(type)));
         clazz.type.forAllImplementsSubtypes(
-            type -> addNonNull(worklist, application.definitionFor(type)));
+            type -> addNonNull(worklist, appView.definitionFor(type)));
       }
     }
     return subTypes;
