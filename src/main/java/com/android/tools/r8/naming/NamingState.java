@@ -13,7 +13,6 @@ import com.google.common.collect.Sets;
 import com.google.common.collect.Table;
 import java.io.PrintStream;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -70,7 +69,7 @@ class NamingState<ProtoType extends CachedHashValueDexItem, KeyType> {
         InternalState parentState = parent.getOrCreateInternalStateFor(key);
         result = parentState.createChild();
       } else {
-        result = new InternalState(itemFactory, null, dictionary);
+        result = new InternalState(itemFactory, null);
       }
       usedNames.put(key, result);
     }
@@ -146,6 +145,7 @@ class NamingState<ProtoType extends CachedHashValueDexItem, KeyType> {
   class InternalState {
 
     private static final int INITIAL_NAME_COUNT = 1;
+    private static final int INITIAL_DICTIONARY_INDEX = 0;
     private final char[] EMPTY_CHAR_ARRAY = new char[0];
 
     protected final DexItemFactory itemFactory;
@@ -153,22 +153,17 @@ class NamingState<ProtoType extends CachedHashValueDexItem, KeyType> {
     private Set<DexString> reservedNames = null;
     private Table<DexString, KeyType, DexString> renamings = null;
     private int nameCount;
-    private final Iterator<String> dictionaryIterator;
+    private int dictionaryIndex;
 
-    private InternalState(
-        DexItemFactory itemFactory,
-        InternalState parentInternalState,
-        Iterator<String> dictionaryIterator) {
+    private InternalState(DexItemFactory itemFactory, InternalState parentInternalState) {
       this.itemFactory = itemFactory;
       this.parentInternalState = parentInternalState;
       this.nameCount =
           parentInternalState == null ? INITIAL_NAME_COUNT : parentInternalState.nameCount;
-      this.dictionaryIterator = dictionaryIterator;
-    }
-
-    private InternalState(
-        DexItemFactory itemFactory, InternalState parentInternalState, List<String> dictionary) {
-      this(itemFactory, parentInternalState, dictionary.iterator());
+      this.dictionaryIndex =
+          parentInternalState == null
+              ? INITIAL_DICTIONARY_INDEX
+              : parentInternalState.dictionaryIndex;
     }
 
     private boolean isReserved(DexString name) {
@@ -183,7 +178,7 @@ class NamingState<ProtoType extends CachedHashValueDexItem, KeyType> {
     }
 
     InternalState createChild() {
-      return new InternalState(itemFactory, this, dictionaryIterator);
+      return new InternalState(itemFactory, this);
     }
 
     void reserveName(DexString name) {
@@ -252,8 +247,8 @@ class NamingState<ProtoType extends CachedHashValueDexItem, KeyType> {
     }
 
     String nextSuggestedName() {
-      if (dictionaryIterator.hasNext()) {
-        return dictionaryIterator.next();
+      if (dictionaryIndex < dictionary.size()) {
+        return dictionary.get(dictionaryIndex++);
       } else {
         return StringUtils.numberToIdentifier(EMPTY_CHAR_ARRAY, incrementAndGet(), false);
       }
