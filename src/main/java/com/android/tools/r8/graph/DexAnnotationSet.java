@@ -12,6 +12,8 @@ import java.util.function.Predicate;
 
 public class DexAnnotationSet extends CachedHashValueDexItem {
 
+  public static final DexAnnotationSet[] EMPTY_ARRAY = {};
+
   private static final int UNSORTED = 0;
   private static final DexAnnotationSet THE_EMPTY_ANNOTATIONS_SET =
       new DexAnnotationSet(new DexAnnotation[0]);

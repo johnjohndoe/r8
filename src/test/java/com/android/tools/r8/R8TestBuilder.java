@@ -183,19 +183,35 @@ public class R8TestBuilder
   }
 
   public R8TestBuilder enableConstantArgumentAnnotations() {
-    if (!enableConstantArgumentAnnotations) {
-      enableConstantArgumentAnnotations = true;
-      addInternalKeepRules(
-          "-keepconstantarguments class * { @com.android.tools.r8.KeepConstantArguments *; }");
+    return enableConstantArgumentAnnotations(true);
+  }
+
+  public R8TestBuilder enableConstantArgumentAnnotations(boolean value) {
+    if (value) {
+      if (!enableConstantArgumentAnnotations) {
+        enableConstantArgumentAnnotations = true;
+        addInternalKeepRules(
+            "-keepconstantarguments class * { @com.android.tools.r8.KeepConstantArguments *; }");
+      }
+    } else {
+      assert !enableConstantArgumentAnnotations;
     }
     return self();
   }
 
   public R8TestBuilder enableUnusedArgumentAnnotations() {
-    if (!enableUnusedArgumentAnnotations) {
-      enableUnusedArgumentAnnotations = true;
-      addInternalKeepRules(
-          "-keepunusedarguments class * { @com.android.tools.r8.KeepUnusedArguments *; }");
+    return enableUnusedArgumentAnnotations(true);
+  }
+
+  public R8TestBuilder enableUnusedArgumentAnnotations(boolean value) {
+    if (value) {
+      if (!enableUnusedArgumentAnnotations) {
+        enableUnusedArgumentAnnotations = true;
+        addInternalKeepRules(
+            "-keepunusedarguments class * { @com.android.tools.r8.KeepUnusedArguments *; }");
+      }
+    } else {
+      assert !enableUnusedArgumentAnnotations;
     }
     return self();
   }

@@ -174,7 +174,8 @@ public class UnusedArgumentsCollector {
       } while (!isMethodSignatureAvailable(newSignature));
       markSignatureAsNoLongerUsed(method.method);
       markSignatureAsUsed(newSignature);
-      return method.toTypeSubstitutedMethod(newSignature);
+      return method.toTypeSubstitutedMethod(
+          newSignature, unused.createParameterAnnotationsRemover(method));
     }
   }
 

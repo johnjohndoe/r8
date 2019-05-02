@@ -46,11 +46,13 @@ import com.android.tools.r8.naming.MemberNaming.Signature;
 import com.android.tools.r8.naming.NamingLens;
 import com.android.tools.r8.origin.Origin;
 import com.android.tools.r8.utils.InternalOptions;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.IntPredicate;
 
 public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements ResolutionResult {
 
@@ -614,15 +616,25 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
 
   public DexEncodedMethod toTypeSubstitutedMethod(DexMethod method) {
     checkIfObsolete();
+    return toTypeSubstitutedMethod(method, null);
+  }
+
+  public DexEncodedMethod toTypeSubstitutedMethod(DexMethod method, Consumer<Builder> consumer) {
+    checkIfObsolete();
     if (this.method == method) {
       return this;
     }
     Builder builder = builder(this);
     builder.setMethod(method);
     // TODO(b/112847660): Fix type fixers that use this method: ProguardMapApplier
-    // TODO(b/112847660): Fix type fixers that use this method: Staticizer
-    // TODO(b/112847660): Fix type fixers that use this method: VerticalClassMerger
+    // TODO(b/112847660): Fix type fixers that use this method: Class staticizer
+    // TODO(b/112847660): Fix type fixers that use this method: Uninstantiated type optimization
+    // TODO(b/112847660): Fix type fixers that use this method: Unused argument removal
+    // TODO(b/112847660): Fix type fixers that use this method: Vertical class merger
     // setObsolete();
+    if (consumer != null) {
+      consumer.accept(builder);
+    }
     return builder.build();
   }
 
@@ -1226,12 +1238,12 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
     return new Builder(from);
   }
 
-  private static class Builder {
+  public static class Builder {
 
     private DexMethod method;
     private final MethodAccessFlags accessFlags;
     private final DexAnnotationSet annotations;
-    private final ParameterAnnotationsList parameterAnnotations;
+    private ParameterAnnotationsList parameterAnnotations;
     private Code code;
     private CompilationState compilationState;
     private OptimizationInfo optimizationInfo;
@@ -1242,15 +1254,61 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
       method = from.method;
       accessFlags = from.accessFlags.copy();
       annotations = from.annotations;
-      parameterAnnotations = from.parameterAnnotationsList;
       code = from.code;
       compilationState = from.compilationState;
       optimizationInfo = from.optimizationInfo.mutableCopy();
       classFileVersion = from.classFileVersion;
+
+      if (from.parameterAnnotationsList.isEmpty()
+          || from.parameterAnnotationsList.size() == method.proto.parameters.size()) {
+        parameterAnnotations = from.parameterAnnotationsList;
+      } else {
+        assert false
+            : "Parameter annotations does not match proto of method `"
+                + method.toSourceString()
+                + "` (was: "
+                + parameterAnnotations
+                + ")";
+        parameterAnnotations = ParameterAnnotationsList.empty();
+      }
     }
 
     public void setMethod(DexMethod method) {
       this.method = method;
+    }
+
+    public Builder setParameterAnnotations(ParameterAnnotationsList parameterAnnotations) {
+      this.parameterAnnotations = parameterAnnotations;
+      return this;
+    }
+
+    public Builder removeParameterAnnotations(IntPredicate predicate) {
+      if (parameterAnnotations.isEmpty()) {
+        // Nothing to do.
+        return this;
+      }
+
+      List<DexAnnotationSet> newParameterAnnotations = new ArrayList<>();
+      int newNumberOfMissingParameterAnnotations = 0;
+
+      for (int oldIndex = 0; oldIndex < parameterAnnotations.size(); oldIndex++) {
+        if (!predicate.test(oldIndex)) {
+          if (parameterAnnotations.isMissing(oldIndex)) {
+            newNumberOfMissingParameterAnnotations++;
+          } else {
+            newParameterAnnotations.add(parameterAnnotations.get(oldIndex));
+          }
+        }
+      }
+
+      if (newParameterAnnotations.isEmpty()) {
+        return setParameterAnnotations(ParameterAnnotationsList.empty());
+      }
+
+      return setParameterAnnotations(
+          new ParameterAnnotationsList(
+              newParameterAnnotations.toArray(DexAnnotationSet.EMPTY_ARRAY),
+              newNumberOfMissingParameterAnnotations));
     }
 
     public Builder setStatic() {
@@ -1282,6 +1340,8 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
       assert accessFlags != null;
       assert annotations != null;
       assert parameterAnnotations != null;
+      assert parameterAnnotations.isEmpty()
+          || parameterAnnotations.size() == method.proto.parameters.size();
       DexEncodedMethod result =
           new DexEncodedMethod(
               method, accessFlags, annotations, parameterAnnotations, code, classFileVersion);

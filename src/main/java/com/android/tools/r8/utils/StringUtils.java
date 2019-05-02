@@ -281,4 +281,12 @@ public class StringUtils {
 
     return new String(characters);
   }
+
+  public static String times(String string, int count) {
+    StringBuilder builder = new StringBuilder();
+    while (--count >= 0) {
+      builder.append(string);
+    }
+    return builder.toString();
+  }
 }

@@ -118,8 +118,12 @@ public abstract class TestShrinkerBuilder<
     return self();
   }
 
+  public T addKeepAttributes(String... attributes) {
+    return addKeepRules("-keepattributes " + String.join(",", attributes));
+  }
+
   public T addKeepAllAttributes() {
-    return addKeepRules("-keepattributes *");
+    return addKeepAttributes("*");
   }
 
   private static String getMethodLine(MethodReference method) {
