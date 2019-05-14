@@ -3,6 +3,8 @@
 // BSD-style license that can be found in the LICENSE file.
 package com.android.tools.r8.naming;
 
+import com.android.tools.r8.graph.AppInfo.ResolutionResult;
+import com.android.tools.r8.graph.AppInfoWithSubtyping;
 import com.android.tools.r8.graph.AppView;
 import com.android.tools.r8.graph.DexAnnotation;
 import com.android.tools.r8.graph.DexAnnotationSet;
@@ -20,6 +22,7 @@ import com.android.tools.r8.graph.DexTypeList;
 import com.android.tools.r8.graph.GraphLense;
 import com.android.tools.r8.naming.MemberNaming.FieldSignature;
 import com.android.tools.r8.naming.MemberNaming.MethodSignature;
+import com.android.tools.r8.naming.signature.GenericSignatureRewriter;
 import com.android.tools.r8.shaking.Enqueuer.AppInfoWithLiveness;
 import com.android.tools.r8.utils.ArrayUtils;
 import com.android.tools.r8.utils.ThrowingConsumer;
@@ -34,12 +37,14 @@ import java.util.function.Function;
 
 public class ProguardMapApplier {
 
+  private final AppView<AppInfoWithLiveness> appView;
   private final AppInfoWithLiveness appInfo;
   private final GraphLense previousLense;
   private final SeedMapper seedMapper;
 
   public ProguardMapApplier(AppView<AppInfoWithLiveness> appView, SeedMapper seedMapper) {
     assert appView.graphLense().isContextFreeForMethods();
+    this.appView = appView;
     this.appInfo = appView.appInfo();
     this.previousLense = appView.graphLense();
     this.seedMapper = seedMapper;
@@ -61,7 +66,7 @@ public class ProguardMapApplier {
     private final Map<DexProto, DexProto> protoFixupCache = new IdentityHashMap<>();
 
     MapToLenseConverter() {
-      lenseBuilder = new ConflictFreeBuilder();
+      lenseBuilder = new ConflictFreeBuilder(appInfo);
     }
 
     private GraphLense run() {
@@ -303,10 +308,26 @@ public class ProguardMapApplier {
     private final ConflictFreeBuilder lenseBuilder;
     private final GraphLense appliedLense;
     private final Map<DexProto, DexProto> protoFixupCache = new IdentityHashMap<>();
+    private final GenericSignatureRewriter signatureRewriter;
 
     TreeFixer(GraphLense appliedLense) {
-      this.lenseBuilder = new ConflictFreeBuilder();
+      this.lenseBuilder = new ConflictFreeBuilder(appInfo);
       this.appliedLense = appliedLense;
+      this.signatureRewriter =
+          new GenericSignatureRewriter(
+              appView,
+              (t, ignored) -> {
+                // The second argument is different from descriptor only when parsing innner type
+                // names, where ignored == NULL. When that is the case the GenericSignatureRewriter
+                // will use the read name and not perform a rewrite. By ignoring the second argument
+                // and always returning the looked-up descriptor, we basically force a rewrite with
+                // the identity name in the null case, which is equivalent, as long as b/110085899
+                // is not reported in the null case.
+                assert t != null;
+                DexType dexType = appliedLense.lookupType(t);
+                assert dexType != null;
+                return dexType.descriptor;
+              });
     }
 
     private GraphLense run() {
@@ -317,6 +338,7 @@ public class ProguardMapApplier {
       // PrgA#foo signature: from LibA to a renamed name.
       appInfo.classes().forEach(this::fixClass);
       appInfo.libraryClasses().forEach(this::fixClass);
+      signatureRewriter.run();
       return lenseBuilder.build(appInfo.dexItemFactory, appliedLense);
     }
 
@@ -442,8 +464,12 @@ public class ProguardMapApplier {
   }
 
   private static class ConflictFreeBuilder extends GraphLense.Builder {
-    ConflictFreeBuilder() {
+
+    AppInfoWithSubtyping appInfo;
+
+    ConflictFreeBuilder(AppInfoWithSubtyping appInfo) {
       super();
+      this.appInfo = appInfo;
     }
 
     @Override
@@ -458,25 +484,35 @@ public class ProguardMapApplier {
     }
 
     @Override
-    public void map(DexMethod from, DexMethod to) {
+    public void move(DexMethod from, DexMethod to) {
       if (methodMap.containsKey(from)) {
         String keptName = methodMap.get(from).name.toString();
         if (!keptName.equals(to.name.toString())) {
+          ResolutionResult resolutionResult = appInfo.resolveMethod(to.holder, to);
+          // Static methods shadow parent implementations but can be mapped to different names.
+          if (resolutionResult.hasSingleTarget() && resolutionResult.asSingleTarget().isStatic()) {
+            return;
+          }
           throw ProguardMapError.keptMethodWasRenamed(from, keptName, to.name.toString());
         }
       }
-      super.map(from, to);
+      super.move(from, to);
     }
 
     @Override
-    public void map(DexField from, DexField to) {
+    public void move(DexField from, DexField to) {
       if (fieldMap.containsKey(from)) {
         String keptName = fieldMap.get(from).name.toString();
         if (!keptName.equals(to.name.toString())) {
+          DexEncodedField field = appInfo.resolveFieldOn(to.type, to);
+          // Static fields shadow parent implementations but can be mapped to different names.
+          if (field != null && field.isStatic()) {
+            return;
+          }
           throw ProguardMapError.keptFieldWasRenamed(from, keptName, to.name.toString());
         }
       }
-      super.map(from, to);
+      super.move(from, to);
     }
 
     // Helper to determine whether to apply the class mapping on-the-fly or applied already.

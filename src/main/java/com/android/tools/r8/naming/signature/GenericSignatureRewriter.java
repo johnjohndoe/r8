@@ -19,10 +19,11 @@ import com.android.tools.r8.shaking.Enqueuer.AppInfoWithLiveness;
 import com.android.tools.r8.utils.DescriptorUtils;
 import com.android.tools.r8.utils.Reporter;
 import com.android.tools.r8.utils.StringDiagnostic;
-import com.google.common.collect.Maps;
+import com.google.common.collect.ImmutableMap;
 import java.lang.reflect.GenericSignatureFormatError;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -30,15 +31,24 @@ public class GenericSignatureRewriter {
 
   private final AppView<AppInfoWithLiveness> appView;
   private final AppInfoWithLiveness appInfo;
-  private final Map<DexType, DexString> renaming;
+  private final BiFunction<DexType, DexString, DexString> renaming;
   private final Reporter reporter;
+  private final GenericSignatureCollector genericSignatureCollector =
+      new GenericSignatureCollector();
+  private final GenericSignatureParser<DexType> genericSignatureParser =
+      new GenericSignatureParser<>(genericSignatureCollector);
 
   public GenericSignatureRewriter(AppView<AppInfoWithLiveness> appView) {
-    this(appView, Maps.newIdentityHashMap());
+    this(appView, ImmutableMap.of());
   }
 
   public GenericSignatureRewriter(
       AppView<AppInfoWithLiveness> appView, Map<DexType, DexString> renaming) {
+    this(appView, renaming::getOrDefault);
+  }
+
+  public GenericSignatureRewriter(
+      AppView<AppInfoWithLiveness> appView, BiFunction<DexType, DexString, DexString> renaming) {
     this.appView = appView;
     this.appInfo = appView.appInfo();
     this.renaming = renaming;
@@ -46,10 +56,6 @@ public class GenericSignatureRewriter {
   }
 
   public void run() {
-    final GenericSignatureCollector genericSignatureCollector = new GenericSignatureCollector();
-    final GenericSignatureParser<DexType> genericSignatureParser =
-        new GenericSignatureParser<>(genericSignatureCollector);
-
     for (DexClass clazz : appInfo.classes()) {
       clazz.annotations =
           rewriteGenericSignatures(
@@ -164,7 +170,7 @@ public class GenericSignatureRewriter {
       if (appInfo.wasPruned(type)) {
         type = appInfo.dexItemFactory.objectType;
       }
-      DexString renamedDescriptor = renaming.getOrDefault(type, type.descriptor);
+      DexString renamedDescriptor = renaming.apply(type, type.descriptor);
       renamedSignature.append(getClassBinaryNameFromDescriptor(renamedDescriptor.toString()));
       return type;
     }
@@ -181,9 +187,9 @@ public class GenericSignatureRewriter {
                       + name));
       String enclosingRenamedBinaryName =
           getClassBinaryNameFromDescriptor(
-              renaming.getOrDefault(enclosingType, enclosingType.descriptor).toString());
+              renaming.apply(enclosingType, enclosingType.descriptor).toString());
       type = appView.graphLense().lookupType(type);
-      DexString renamedDescriptor = renaming.get(type);
+      DexString renamedDescriptor = renaming.apply(type, null);
       if (renamedDescriptor != null) {
         // Pick the renamed inner class from the fully renamed binary name.
         String fullRenamedBinaryName =
