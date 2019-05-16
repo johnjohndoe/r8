@@ -17,7 +17,6 @@ import com.android.tools.r8.graph.KeyedDexItem;
 import com.android.tools.r8.graph.PresortedComparable;
 import com.android.tools.r8.logging.Log;
 import com.android.tools.r8.utils.InternalOptions;
-import com.google.common.base.Predicates;
 import com.google.common.collect.Sets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -118,17 +117,6 @@ public class TreePruner {
     DexEncodedField[] reachableStaticFields = reachableFields(clazz.staticFields());
     if (reachableStaticFields != null) {
       clazz.setStaticFields(reachableStaticFields);
-    }
-    // If the class is local, it'll become an ordinary class by renaming.
-    // Invalidate its inner-class / enclosing-method attributes early.
-    if (appView.options().isMinifying()
-        && appView.rootSet().mayBeMinified(clazz.type, appView)
-        && clazz.isLocalClass()) {
-      assert clazz.getInnerClassAttributeForThisClass() != null;
-      clazz.removeEnclosingMethod(Predicates.alwaysTrue());
-      InnerClassAttribute innerClassAttribute =
-          clazz.getInnerClassAttributeForThisClass();
-      clazz.removeInnerClasses(attr -> attr == innerClassAttribute);
     }
     clazz.removeInnerClasses(this::isAttributeReferencingPrunedType);
     clazz.removeEnclosingMethod(this::isAttributeReferencingPrunedItem);
