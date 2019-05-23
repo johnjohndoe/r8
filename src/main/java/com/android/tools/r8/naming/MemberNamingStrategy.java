@@ -4,6 +4,9 @@
 
 package com.android.tools.r8.naming;
 
+import com.android.tools.r8.graph.DexClass;
+import com.android.tools.r8.graph.DexEncodedField;
+import com.android.tools.r8.graph.DexEncodedMethod;
 import com.android.tools.r8.graph.DexField;
 import com.android.tools.r8.graph.DexMethod;
 import com.android.tools.r8.graph.DexReference;
@@ -11,20 +14,17 @@ import com.android.tools.r8.graph.DexString;
 
 public interface MemberNamingStrategy {
 
-  DexString next(DexMethod method, MemberNamingInternalState internalState);
+  DexString next(DexMethod method, InternalNamingState internalState);
 
-  DexString next(DexField field, MemberNamingInternalState internalState);
+  DexString next(DexField field, InternalNamingState internalState);
 
-  boolean breakOnNotAvailable(DexReference source, DexString name);
+  DexString getReservedNameOrDefault(
+      DexEncodedMethod method, DexClass holder, DexString defaultValue);
 
-  boolean noObfuscation(DexReference reference);
+  DexString getReservedNameOrDefault(
+      DexEncodedField field, DexClass holder, DexString defaultValue);
 
-  interface MemberNamingInternalState {
+  boolean allowMemberRenaming(DexClass holder);
 
-    int getDictionaryIndex();
-
-    int incrementDictionaryIndex();
-
-    int incrementNameIndex(boolean isDirectMethodCall);
-  }
+  void reportReservationError(DexReference source, DexString name);
 }

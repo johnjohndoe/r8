@@ -85,11 +85,15 @@ class FieldNameMinifier {
     for (DexClass clazz : appView.appInfo().app().asDirect().allClasses()) {
       ReservedFieldNamingState reservedNames = null;
       for (DexEncodedField field : clazz.fields()) {
-        if (shouldReserveName(clazz, field)) {
+        DexString reservedName = strategy.getReservedNameOrDefault(field, clazz, null);
+        if (reservedName != null) {
           if (reservedNames == null) {
             reservedNames = getOrCreateReservedFieldNamingState(clazz.type);
           }
-          reservedNames.markReservedDirectly(field.field);
+          reservedNames.markReservedDirectly(reservedName, field.field.type);
+          if (reservedName != field.field.name) {
+            renaming.put(field.field, reservedName);
+          }
         }
       }
 
@@ -107,17 +111,6 @@ class FieldNameMinifier {
     }
 
     propagateReservedFieldNamesUpwards();
-  }
-
-  private boolean shouldReserveName(DexClass clazz, DexEncodedField field) {
-    if (clazz.isLibraryClass()) {
-      return true;
-    }
-    if (!appView.options().getProguardConfiguration().hasApplyMappingFile()
-        && appView.rootSet().mayNotBeMinified(field.field, appView)) {
-      return true;
-    }
-    return false;
   }
 
   private void propagateReservedFieldNamesUpwards() {

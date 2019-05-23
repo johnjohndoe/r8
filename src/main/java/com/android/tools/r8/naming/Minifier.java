@@ -3,9 +3,12 @@
 // BSD-style license that can be found in the LICENSE file.
 package com.android.tools.r8.naming;
 
+import static com.android.tools.r8.utils.StringUtils.EMPTY_CHAR_ARRAY;
+
 import com.android.tools.r8.graph.AppView;
 import com.android.tools.r8.graph.DexCallSite;
 import com.android.tools.r8.graph.DexClass;
+import com.android.tools.r8.graph.DexEncodedField;
 import com.android.tools.r8.graph.DexEncodedMethod;
 import com.android.tools.r8.graph.DexField;
 import com.android.tools.r8.graph.DexItemFactory;
@@ -15,15 +18,13 @@ import com.android.tools.r8.graph.DexString;
 import com.android.tools.r8.graph.DexType;
 import com.android.tools.r8.naming.ClassNameMinifier.ClassNamingStrategy;
 import com.android.tools.r8.naming.ClassNameMinifier.ClassRenaming;
-import com.android.tools.r8.naming.ClassNameMinifier.Namespace;
 import com.android.tools.r8.naming.ClassNameMinifier.PackageNamingStrategy;
 import com.android.tools.r8.naming.FieldNameMinifier.FieldRenaming;
 import com.android.tools.r8.naming.MethodNameMinifier.MethodRenaming;
 import com.android.tools.r8.shaking.AppInfoWithLiveness;
-import com.android.tools.r8.utils.StringUtils;
+import com.android.tools.r8.utils.SymbolGenerationUtils;
+import com.android.tools.r8.utils.SymbolGenerationUtils.MixedCasing;
 import com.android.tools.r8.utils.Timing;
-import it.unimi.dsi.fastutil.objects.Object2IntLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -50,7 +51,7 @@ public class Minifier {
         new ClassNameMinifier(
             appView,
             new MinificationClassNamingStrategy(appView),
-            new MinificationPackageNamingStrategy(),
+            new MinificationPackageNamingStrategy(appView),
             // Use deterministic class order to make sure renaming is deterministic.
             appView.appInfo().classesWithDeterministicOrder());
     ClassRenaming classRenaming = classNameMinifier.computeRenaming(timing);
@@ -84,29 +85,57 @@ public class Minifier {
     return lens;
   }
 
-  static class MinificationClassNamingStrategy implements ClassNamingStrategy {
+  abstract static class BaseMinificationNamingStrategy {
 
-    private final AppView<?> appView;
-    private final Object2IntMap<Namespace> namespaceCounters = new Object2IntLinkedOpenHashMap<>();
+    // We have to ensure that the names proposed by the minifier is not used in the obfuscation
+    // dictionary. We use a list for direct indexing based on a number and a set for looking up.
+    private final List<String> obfuscationDictionary;
+    private final Set<String> obfuscationDictionaryForLookup;
+    private final MixedCasing mixedCasing;
+
+    BaseMinificationNamingStrategy(List<String> obfuscationDictionary, boolean dontUseMixedCasing) {
+      this.obfuscationDictionary = obfuscationDictionary;
+      this.obfuscationDictionaryForLookup = new HashSet<>(this.obfuscationDictionary);
+      this.mixedCasing =
+          dontUseMixedCasing ? MixedCasing.DONT_USE_MIXED_CASE : MixedCasing.USE_MIXED_CASE;
+      assert obfuscationDictionary != null;
+    }
+
+    String nextName(char[] packagePrefix, InternalNamingState state, boolean isDirectMethodCall) {
+      StringBuilder nextName = new StringBuilder();
+      nextName.append(packagePrefix);
+      if (state.getDictionaryIndex() < obfuscationDictionary.size()) {
+        nextName.append(obfuscationDictionary.get(state.incrementDictionaryIndex()));
+      } else {
+        String nextString;
+        do {
+          nextString =
+              SymbolGenerationUtils.numberToIdentifier(
+                  state.incrementNameIndex(isDirectMethodCall), mixedCasing);
+        } while (obfuscationDictionaryForLookup.contains(nextString));
+        nextName.append(nextString);
+      }
+      return nextName.toString();
+    }
+  }
+
+  static class MinificationClassNamingStrategy extends BaseMinificationNamingStrategy
+      implements ClassNamingStrategy {
+
+    final AppView<?> appView;
+    private final DexItemFactory factory;
 
     MinificationClassNamingStrategy(AppView<?> appView) {
+      super(
+          appView.options().getProguardConfiguration().getClassObfuscationDictionary(),
+          appView.options().getProguardConfiguration().hasDontUseMixedCaseClassnames());
       this.appView = appView;
-      namespaceCounters.defaultReturnValue(1);
+      factory = appView.dexItemFactory();
     }
 
     @Override
-    public DexString next(Namespace namespace, DexType type, char[] packagePrefix) {
-      int counter = namespaceCounters.put(namespace, namespaceCounters.getInt(namespace) + 1);
-      DexString string =
-          appView
-              .dexItemFactory()
-              .createString(StringUtils.numberToIdentifier(counter, packagePrefix, true));
-      return string;
-    }
-
-    @Override
-    public boolean bypassDictionary() {
-      return false;
+    public DexString next(DexType type, char[] packagePrefix, InternalNamingState state) {
+      return factory.createString(nextName(packagePrefix, state, false) + ";");
     }
 
     @Override
@@ -115,84 +144,91 @@ public class Minifier {
     }
   }
 
-  static class MinificationPackageNamingStrategy implements PackageNamingStrategy {
+  static class MinificationPackageNamingStrategy extends BaseMinificationNamingStrategy
+      implements PackageNamingStrategy {
 
-    private final Object2IntMap<Namespace> namespaceCounters = new Object2IntLinkedOpenHashMap<>();
-
-    public MinificationPackageNamingStrategy() {
-      namespaceCounters.defaultReturnValue(1);
+    MinificationPackageNamingStrategy(AppView<?> appView) {
+      super(
+          appView.options().getProguardConfiguration().getPackageObfuscationDictionary(),
+          appView.options().getProguardConfiguration().hasDontUseMixedCaseClassnames());
     }
 
     @Override
-    public String next(Namespace namespace, char[] packagePrefix) {
+    public String next(char[] packagePrefix, InternalNamingState state) {
       // Note that the differences between this method and the other variant for class renaming are
       // 1) this one uses the different dictionary and counter,
       // 2) this one does not append ';' at the end, and
       // 3) this one removes 'L' at the beginning to make the return value a binary form.
-      int counter = namespaceCounters.put(namespace, namespaceCounters.getInt(namespace) + 1);
-      return StringUtils.numberToIdentifier(counter, packagePrefix, false).substring(1);
-    }
-
-    @Override
-    public boolean bypassDictionary() {
-      return false;
+      return nextName(packagePrefix, state, false).substring(1);
     }
   }
 
-  static class MinifierMemberNamingStrategy implements MemberNamingStrategy {
+  static class MinifierMemberNamingStrategy extends BaseMinificationNamingStrategy
+      implements MemberNamingStrategy {
 
+    final AppView<?> appView;
     private final DexItemFactory factory;
-    // We have to ensure that the names proposed by the minifier is not used in the obfuscation
-    // dictionary. We use a list for direct indexing based on a number and a set for looking up.
-    private final List<String> obfuscationDictionary;
-    private final Set<String> obfuscationDictionaryForLookup;
-
-    private final AppView<?> appView;
 
     public MinifierMemberNamingStrategy(AppView<?> appView) {
+      super(appView.options().getProguardConfiguration().getObfuscationDictionary(), false);
       this.appView = appView;
       this.factory = appView.dexItemFactory();
-      this.obfuscationDictionary =
-          appView.options().getProguardConfiguration().getObfuscationDictionary();
-      this.obfuscationDictionaryForLookup = new HashSet<>(this.obfuscationDictionary);
-      assert this.obfuscationDictionary != null;
     }
 
     @Override
-    public DexString next(DexMethod method, MemberNamingInternalState internalState) {
+    public DexString next(DexMethod method, InternalNamingState internalState) {
+      assert checkAllowMemberRenaming(method.holder);
       DexEncodedMethod encodedMethod = appView.definitionFor(method);
       boolean isDirectOrStatic = encodedMethod.isDirectMethod() || encodedMethod.isStatic();
       return getNextName(internalState, isDirectOrStatic);
     }
 
     @Override
-    public DexString next(DexField field, MemberNamingInternalState internalState) {
+    public DexString next(DexField field, InternalNamingState internalState) {
+      assert checkAllowMemberRenaming(field.holder);
       return getNextName(internalState, false);
     }
 
-    private DexString getNextName(
-        MemberNamingInternalState internalState, boolean isDirectOrStatic) {
-      if (internalState.getDictionaryIndex() < obfuscationDictionary.size()) {
-        return factory.createString(
-            obfuscationDictionary.get(internalState.incrementDictionaryIndex()));
-      } else {
-        String nextString;
-        do {
-          int counter = internalState.incrementNameIndex(isDirectOrStatic);
-          nextString = StringUtils.numberToIdentifier(counter);
-        } while (obfuscationDictionaryForLookup.contains(nextString));
-        return factory.createString(nextString);
+    private DexString getNextName(InternalNamingState internalState, boolean isDirectOrStatic) {
+      return factory.createString(nextName(EMPTY_CHAR_ARRAY, internalState, isDirectOrStatic));
+    }
+
+    @Override
+    public DexString getReservedNameOrDefault(
+        DexEncodedMethod method, DexClass holder, DexString defaultValue) {
+      if (!allowMemberRenaming(holder)
+          || holder.accessFlags.isAnnotation()
+          || method.accessFlags.isConstructor()
+          || appView.rootSet().mayNotBeMinified(method.method, appView)) {
+        return method.method.name;
       }
+      return defaultValue;
     }
 
     @Override
-    public boolean breakOnNotAvailable(DexReference source, DexString name) {
-      return false;
+    public DexString getReservedNameOrDefault(
+        DexEncodedField field, DexClass holder, DexString defaultValue) {
+      if (holder.isLibraryClass() || appView.rootSet().mayNotBeMinified(field.field, appView)) {
+        return field.field.name;
+      }
+      return defaultValue;
     }
 
     @Override
-    public boolean noObfuscation(DexReference reference) {
-      return appView.rootSet().mayNotBeMinified(reference, appView);
+    public boolean allowMemberRenaming(DexClass holder) {
+      return holder.isProgramClass();
+    }
+
+    public boolean checkAllowMemberRenaming(DexType holder) {
+      DexClass clazz = appView.definitionFor(holder);
+      assert clazz != null && allowMemberRenaming(clazz);
+      return true;
+    }
+
+    @Override
+    public void reportReservationError(DexReference source, DexString name) {
+      assert false;
+      // This should only happen when applymapping is used and will be caught in that strategy.
     }
   }
 }

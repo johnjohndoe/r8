@@ -61,7 +61,6 @@ public class ProguardConfigurationParser {
 
   private static final List<String> IGNORED_FLAG_OPTIONS = ImmutableList.of(
       "forceprocessing",
-      "dontusemixedcaseclassnames",
       "dontpreverify",
       "experimentalshrinkunusedprotofields",
       "filterlibraryjarswithorginalprogramjars",
@@ -398,6 +397,8 @@ public class ProguardConfigurationParser {
         configurationBuilder.addRule(parseIfRule(optionStart));
       } else if (acceptString("addconfigurationdebugging")) {
         configurationBuilder.setConfigurationDebugging(true);
+      } else if (acceptString("dontusemixedcaseclassnames")) {
+        configurationBuilder.setDontUseMixedCaseClassnames(true);
       } else {
         String unknownOption = acceptString();
         String devMessage = "";

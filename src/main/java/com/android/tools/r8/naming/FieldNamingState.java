@@ -12,7 +12,6 @@ import com.android.tools.r8.graph.DexField;
 import com.android.tools.r8.graph.DexString;
 import com.android.tools.r8.graph.DexType;
 import com.android.tools.r8.naming.FieldNamingState.InternalState;
-import com.android.tools.r8.naming.MemberNamingStrategy.MemberNamingInternalState;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
@@ -51,14 +50,15 @@ public class FieldNamingState extends FieldNamingStateBase<InternalState> implem
     DexEncodedField encodedField = appView.appInfo().resolveField(field);
     if (encodedField != null) {
       DexClass clazz = appView.definitionFor(encodedField.field.holder);
-      if (clazz == null || clazz.isLibraryClass()) {
+      if (clazz == null) {
         return field.name;
       }
-      if (!appView.options().getProguardConfiguration().hasApplyMappingFile()
-          && appView.rootSet().mayNotBeMinified(encodedField.field, appView)) {
-        return field.name;
+      DexString reservedName = strategy.getReservedNameOrDefault(encodedField, clazz, null);
+      if (reservedName != null) {
+        return reservedName;
       }
     }
+    // TODO(b/133208730) If we cannot resolve the field, are we then allowed to rename it?
     return getOrCreateInternalState(field).createNewName(field);
   }
 
@@ -80,7 +80,7 @@ public class FieldNamingState extends FieldNamingStateBase<InternalState> implem
     return new FieldNamingState(appView, strategy, reservedNames, internalStatesClone);
   }
 
-  class InternalState implements MemberNamingInternalState, Cloneable {
+  class InternalState implements InternalNamingState, Cloneable {
 
     private int dictionaryIndex;
     private int nextNameIndex;
@@ -98,8 +98,7 @@ public class FieldNamingState extends FieldNamingStateBase<InternalState> implem
       DexString name;
       do {
         name = strategy.next(field, this);
-      } while (reservedNames.isReserved(name, field.type)
-          && !strategy.breakOnNotAvailable(field, name));
+      } while (reservedNames.isReserved(name, field.type));
       return name;
     }
 

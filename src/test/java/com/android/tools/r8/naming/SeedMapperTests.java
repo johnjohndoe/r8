@@ -162,4 +162,34 @@ public class SeedMapperTests extends TestBase {
       assertEquals(2, ((TextPosition) diagnostic.getPosition()).getLine());
     }
   }
+
+  @Test
+  public void testInliningFrames() throws IOException {
+    Path applyMappingFile =
+        getApplyMappingFile(
+            "A.B.C -> a:",
+            "  int foo(A) -> a",
+            "  1:2:int bar(A):3:4 -> a",
+            "  1:2:int baz(B):3 -> a");
+    TestDiagnosticMessagesImpl testDiagnosticMessages = new TestDiagnosticMessagesImpl();
+    Reporter reporter = new Reporter(testDiagnosticMessages);
+    SeedMapper.seedMapperFromFile(reporter, applyMappingFile);
+  }
+
+  @Test
+  public void testDuplicateInliningFrames() throws IOException {
+    Path applyMappingFile =
+        getApplyMappingFile(
+            "A.B.C -> a:",
+            "  int foo(Z) -> a",
+            "  1:1:int qux(A):3:3 -> a",
+            "  1:1:int bar(A):3 -> a",
+            "  2:2:int qux(A):3:3 -> a",
+            "  2:2:int bar(A):4 -> a",
+            "  3:3:int bar(A):5:5 -> a",
+            "  int qux(C) -> a");
+    TestDiagnosticMessagesImpl testDiagnosticMessages = new TestDiagnosticMessagesImpl();
+    Reporter reporter = new Reporter(testDiagnosticMessages);
+    SeedMapper.seedMapperFromFile(reporter, applyMappingFile);
+  }
 }
