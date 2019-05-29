@@ -679,7 +679,7 @@ public class Inliner {
   private void performInliningImpl(
       InliningStrategy strategy, InliningOracle oracle, DexEncodedMethod context, IRCode code) {
     AssumeDynamicTypeRemover assumeDynamicTypeRemover = new AssumeDynamicTypeRemover(appView, code);
-    List<BasicBlock> blocksToRemove = new ArrayList<>();
+    Set<BasicBlock> blocksToRemove = Sets.newIdentityHashSet();
     ListIterator<BasicBlock> blockIterator = code.listIterator();
     ClassInitializationAnalysis classInitializationAnalysis =
         new ClassInitializationAnalysis(appView, code);
@@ -763,7 +763,7 @@ public class Inliner {
         }
       }
     }
-    assumeDynamicTypeRemover.removeMarkedInstructions();
+    assumeDynamicTypeRemover.removeMarkedInstructions(blocksToRemove);
     assumeDynamicTypeRemover.finish();
     classInitializationAnalysis.finish();
     oracle.finish();
