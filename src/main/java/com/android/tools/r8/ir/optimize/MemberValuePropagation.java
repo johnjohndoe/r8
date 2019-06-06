@@ -219,6 +219,13 @@ public class MemberValuePropagation {
       return;
     }
     DexEncodedMethod definition = current.lookupSingleTarget(appView, callingContext);
+    if (definition != null && definition.isInstanceInitializer()) {
+      // Member value propagation does not apply to constructors. Removing a call to a constructor
+      // that is marked as having no side effects could lead to verification errors, due to
+      // uninitialized instances being used.
+      return;
+    }
+
     ProguardMemberRuleLookup lookup = lookupMemberRule(definition);
     if (lookup == null) {
       // Since -assumenosideeffects rules are always applied to all overriding methods, we can
@@ -233,8 +240,10 @@ public class MemberValuePropagation {
       if (lookup.type == RuleType.ASSUME_NO_SIDE_EFFECTS && outValueNullOrNotUsed) {
         // Remove invoke if marked as having no side effects and the return value is not used.
         iterator.removeOrReplaceByDebugLocalRead();
-        invokeReplaced = true;
-      } else if (!outValueNullOrNotUsed) {
+        return;
+      }
+
+      if (!outValueNullOrNotUsed) {
         // Check to see if a constant value can be assumed.
         invokeReplaced =
             tryConstantReplacementFromProguard(

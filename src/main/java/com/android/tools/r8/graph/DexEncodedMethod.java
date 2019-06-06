@@ -227,6 +227,14 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
     return compilationState != CompilationState.NOT_PROCESSED;
   }
 
+  public boolean isAbstract() {
+    return accessFlags.isAbstract();
+  }
+
+  public boolean isFinal() {
+    return accessFlags.isFinal();
+  }
+
   public boolean isInitializer() {
     checkIfObsolete();
     return isInstanceInitializer() || isClassInitializer();
@@ -564,6 +572,12 @@ public class DexEncodedMethod extends KeyedDexItem<DexMethod> implements Resolut
   public DexCode buildEmptyThrowingDexCode() {
     Instruction insn[] = {new Const(0, 0), new Throw(0)};
     return generateCodeFromTemplate(1, 0, insn);
+  }
+
+  public DexEncodedMethod toEmptyThrowingMethod(InternalOptions options) {
+    return options.isGeneratingClassFiles()
+        ? toEmptyThrowingMethodCf()
+        : toEmptyThrowingMethodDex();
   }
 
   public DexEncodedMethod toEmptyThrowingMethodDex() {
