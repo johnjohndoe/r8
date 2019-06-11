@@ -2572,4 +2572,15 @@ public class ProguardConfigurationParserTest extends TestBase {
               + "The negation character can only be used to negate access flags");
     }
   }
+
+  @Test
+  public void parseIncludeCode() throws Exception {
+    ProguardConfigurationParser parser;
+    parser = new ProguardConfigurationParser(new DexItemFactory(), reporter);
+    Path proguardConfig = writeTextToTempFile("-keep,includecode class A { method(); }");
+    parser.parse(proguardConfig);
+    assertEquals(1, parser.getConfig().getRules().size());
+    assertEquals(1, handler.infos.size());
+    checkDiagnostics(handler.infos, proguardConfig, 1, 7, "Ignoring modifier", "includecode");
+  }
 }

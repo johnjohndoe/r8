@@ -819,6 +819,7 @@ public class ProguardConfigurationParser {
       skipWhitespace();
       while (acceptChar(',')) {
         skipWhitespace();
+        TextPosition start = getPosition();
         if (acceptString("allow")) {
           if (acceptString("shrinking")) {
             builder.getModifiersBuilder().setAllowsShrinking(true);
@@ -829,6 +830,8 @@ public class ProguardConfigurationParser {
           }
         } else if (acceptString("includedescriptorclasses")) {
           builder.getModifiersBuilder().setIncludeDescriptorClasses(true);
+        } else if (acceptString("includecode")) {
+          infoIgnoringModifier("includecode", start);
         }
         skipWhitespace();
       }
@@ -1877,6 +1880,11 @@ public class ProguardConfigurationParser {
               + "but unlikely to originate from a source language. "
               + "Maybe this is not the rule you are looking for.",
           origin, getPosition(start)));
+    }
+
+    private void infoIgnoringModifier(String modifier, TextPosition start) {
+      reporter.info(new StringDiagnostic(
+          "Ignoring modifier: " + modifier, origin, getPosition(start)));
     }
 
     private Position getPosition(TextPosition start) {
