@@ -855,7 +855,7 @@ public class IRBuilder {
     TypeLatticeElement receiver =
         TypeLatticeElement.fromDexType(method.method.holder, nullability, appView);
     Value value = writeRegister(register, receiver, ThrowingInfo.NO_THROW, local);
-    addInstruction(new Argument(value));
+    addInstruction(new Argument(value, false));
     value.markAsThis();
   }
 
@@ -864,7 +864,7 @@ public class IRBuilder {
     if (removedArgumentInfo == null) {
       DebugLocalInfo local = getOutgoingLocal(register);
       Value value = writeRegister(register, typeLattice, ThrowingInfo.NO_THROW, local);
-      addInstruction(new Argument(value));
+      addInstruction(new Argument(value, false));
     } else {
       handleConstantOrUnusedArgument(register, removedArgumentInfo);
     }
@@ -875,8 +875,8 @@ public class IRBuilder {
     if (removedArgumentInfo == null) {
       DebugLocalInfo local = getOutgoingLocal(register);
       Value value = writeRegister(register, INT, ThrowingInfo.NO_THROW, local);
-      value.setKnownToBeBoolean(true);
-      addInstruction(new Argument(value));
+
+      addInstruction(new Argument(value, true));
     } else {
       assert removedArgumentInfo.isNeverUsed();
     }
@@ -1005,7 +1005,6 @@ public class IRBuilder {
     Value in2 = readRegister(index, ValueTypeConstraint.INT);
     TypeLatticeElement typeLattice = fromMemberType(type);
     Value out = writeRegister(dest, typeLattice, ThrowingInfo.CAN_THROW);
-    out.setKnownToBeBoolean(type == MemberType.BOOLEAN);
     ArrayGet instruction = new ArrayGet(type, out, in1, in2);
     assert instruction.instructionTypeCanThrow();
     if (!type.isPrecise()) {
@@ -1325,7 +1324,6 @@ public class IRBuilder {
             dest,
             TypeLatticeElement.fromDexType(field.type, maybeNull(), appView),
             ThrowingInfo.CAN_THROW);
-    out.setKnownToBeBoolean(field.type == appView.dexItemFactory().booleanType);
     InstanceGet instruction = new InstanceGet(out, in, field);
     assert instruction.instructionTypeCanThrow();
     addInstruction(instruction);
@@ -1606,7 +1604,6 @@ public class IRBuilder {
             dest,
             TypeLatticeElement.fromDexType(outType, maybeNull(), appView),
             ThrowingInfo.CAN_THROW);
-    outValue.setKnownToBeBoolean(outType.isBooleanType());
     invoke.setOutValue(outValue);
   }
 
@@ -1689,7 +1686,6 @@ public class IRBuilder {
             dest,
             TypeLatticeElement.fromDexType(field.type, maybeNull(), appView),
             ThrowingInfo.CAN_THROW);
-    out.setKnownToBeBoolean(field.type == appView.dexItemFactory().booleanType);
     StaticGet instruction = new StaticGet(out, field);
     assert instruction.instructionTypeCanThrow();
     addInstruction(instruction);

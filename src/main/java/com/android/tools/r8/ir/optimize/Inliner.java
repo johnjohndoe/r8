@@ -102,6 +102,11 @@ public class Inliner {
       return ConstraintWithTarget.NEVER;
     }
 
+    if (appView.options().canHaveDalvikIntUsedAsBooleanBug()
+        && returnsIntAsBoolean(code, method, appView)) {
+      return ConstraintWithTarget.NEVER;
+    }
+
     ConstraintWithTarget result = ConstraintWithTarget.ALWAYS;
     InliningConstraints inliningConstraints =
         new InliningConstraints(appView, GraphLense.getIdentityLense());
@@ -118,6 +123,22 @@ public class Inliner {
       result = ConstraintWithTarget.meet(result, state, appView);
     }
     return result;
+  }
+
+  private boolean returnsIntAsBoolean(IRCode code, DexEncodedMethod method, AppView appView) {
+    DexType returnType = method.method.proto.returnType;
+    for (BasicBlock basicBlock : code.blocks) {
+      InstructionListIterator instructionListIterator = basicBlock.listIterator();
+      while (instructionListIterator.hasNext()) {
+        Instruction instruction = instructionListIterator.nextUntil(Instruction::isReturn);
+        if (instruction != null) {
+          if (returnType.isBooleanType() && !instruction.inValues().get(0).knownToBeBoolean()) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   boolean hasInliningAccess(DexEncodedMethod method, DexEncodedMethod target) {
