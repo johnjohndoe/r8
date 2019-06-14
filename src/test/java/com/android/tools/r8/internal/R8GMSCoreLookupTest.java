@@ -4,7 +4,6 @@
 package com.android.tools.r8.internal;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.android.tools.r8.StringResource;
@@ -68,11 +67,17 @@ public class R8GMSCoreLookupTest {
     Set<DexEncodedMethod> targets = appInfo.lookupInterfaceTargets(method.method);
     if (appInfo.subtypes(method.method.holder).stream()
         .allMatch(t -> appInfo.definitionFor(t).isInterface())) {
-      assertTrue(targets.isEmpty());
+      assertEquals(
+          0,
+          targets.stream()
+              .filter(m -> m.accessFlags.isAbstract() || !m.accessFlags.isBridge())
+              .count());
     } else {
-      assertFalse(targets.isEmpty());
+      assertEquals(0, targets.stream().filter(m -> m.accessFlags.isAbstract()).count());
     }
   }
+
+
 
   private void testLookup(DexProgramClass clazz) {
     if (clazz.isInterface()) {
