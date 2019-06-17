@@ -194,6 +194,7 @@ public class DexItemFactory {
   public final DexString proxyDescriptor = createString("Ljava/lang/reflect/Proxy;");
   public final DexString serviceLoaderDescriptor = createString("Ljava/util/ServiceLoader;");
   public final DexString listDescriptor = createString("Ljava/util/List;");
+  public final DexString callableDescriptor = createString("Ljava/util/concurrent/Callable;");
 
   public final DexString throwableDescriptor = createString(throwableDescriptorString);
   public final DexString illegalAccessErrorDescriptor =
@@ -201,6 +202,8 @@ public class DexItemFactory {
   public final DexString icceDescriptor = createString("Ljava/lang/IncompatibleClassChangeError;");
   public final DexString exceptionInInitializerErrorDescriptor =
       createString("Ljava/lang/ExceptionInInitializerError;");
+  public final DexString noClassDefFoundErrorDescriptor =
+      createString("Ljava/lang/NoClassDefFoundError;");
   public final DexString noSuchFieldErrorDescriptor = createString("Ljava/lang/NoSuchFieldError;");
   public final DexString npeDescriptor = createString("Ljava/lang/NullPointerException;");
   public final DexString reflectiveOperationExceptionDescriptor =
@@ -266,12 +269,14 @@ public class DexItemFactory {
   public final DexType proxyType = createType(proxyDescriptor);
   public final DexType serviceLoaderType = createType(serviceLoaderDescriptor);
   public final DexType listType = createType(listDescriptor);
+  public final DexType callableType = createType(callableDescriptor);
 
   public final DexType throwableType = createType(throwableDescriptor);
   public final DexType illegalAccessErrorType = createType(illegalAccessErrorDescriptor);
   public final DexType icceType = createType(icceDescriptor);
   public final DexType exceptionInInitializerErrorType =
       createType(exceptionInInitializerErrorDescriptor);
+  public final DexType noClassDefFoundErrorType = createType(noClassDefFoundErrorDescriptor);
   public final DexType noSuchFieldErrorType = createType(noSuchFieldErrorDescriptor);
   public final DexType npeType = createType(npeDescriptor);
   public final DexType reflectiveOperationExceptionType =
@@ -417,7 +422,7 @@ public class DexItemFactory {
           .build();
 
   public Set<DexType> libraryTypesAssumedToBePresent =
-      ImmutableSet.of(objectType, stringBufferType, stringBuilderType);
+      ImmutableSet.of(objectType, callableType, stringBufferType, stringBuilderType);
 
   public final Set<DexType> libraryTypesWithoutStaticInitialization =
       ImmutableSet.of(
