@@ -62,6 +62,10 @@ public class InternalOptions {
 
   public final DexItemFactory itemFactory;
 
+  public boolean hasProguardConfiguration() {
+    return proguardConfiguration != null;
+  }
+
   public ProguardConfiguration getProguardConfiguration() {
     return proguardConfiguration;
   }
