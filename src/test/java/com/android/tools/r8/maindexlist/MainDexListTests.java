@@ -71,6 +71,7 @@ import com.android.tools.r8.utils.InternalOptions;
 import com.android.tools.r8.utils.ListUtils;
 import com.android.tools.r8.utils.MainDexList;
 import com.android.tools.r8.utils.Reporter;
+import com.android.tools.r8.utils.StringUtils;
 import com.android.tools.r8.utils.ThreadUtils;
 import com.android.tools.r8.utils.Timing;
 import com.android.tools.r8.utils.codeinspector.CodeInspector;
@@ -338,19 +339,65 @@ public class MainDexListTests extends TestBase {
 
   @Test
   public void validEntries() throws IOException {
-    List<String> list = ImmutableList.of(
-        "A.class",
-        "a/b/c/D.class",
-        "a/b/c/D$E.class"
-    );
+    List<String> lines = ImmutableList.of("A.class", "a/b/c/D.class", "a/b/c/D$E.class");
     DexItemFactory factory = new DexItemFactory();
     Path mainDexList = temp.getRoot().toPath().resolve("valid.txt");
-    FileUtils.writeTextFile(mainDexList, list);
+    FileUtils.writeTextFile(mainDexList, lines);
     Set<DexType> types = parse(mainDexList, factory);
-    for (String entry : list) {
+    for (String entry : lines) {
       DexType type = factory.createType("L" + entry.replace(".class", "") + ";");
       assertTrue(types.contains(type));
       assertSame(type, MainDexList.parseEntry(entry, factory));
+    }
+  }
+
+  @Test
+  public void leadingBOM() throws IOException {
+    List<String> lines =
+        ImmutableList.of(StringUtils.BOM + "A.class", "a/b/c/D.class", "a/b/c/D$E.class");
+    List<String> classes = ImmutableList.of("A", "a/b/c/D", "a/b/c/D$E");
+    DexItemFactory factory = new DexItemFactory();
+    Path mainDexList = temp.getRoot().toPath().resolve("valid.txt");
+    FileUtils.writeTextFile(mainDexList, lines);
+    Set<DexType> types = parse(mainDexList, factory);
+    assertEquals(types.size(), classes.size());
+    for (String clazz : classes) {
+      DexType type = factory.createType("L" + clazz + ";");
+      assertTrue(types.contains(type));
+    }
+  }
+
+  @Test
+  public void lotsOfWhitespace() throws IOException {
+    List<String> ws =
+        ImmutableList.of(
+            "",
+            " ",
+            "  ",
+            "\t ",
+            " \t",
+            "" + StringUtils.BOM,
+            StringUtils.BOM + " " + StringUtils.BOM);
+    for (String before : ws) {
+      for (String after : ws) {
+        List<String> lines =
+            ImmutableList.of(
+                before + "A.class" + after,
+                before + "a/b/c/D.class" + after,
+                before + "a/b/c/D$E.class" + after,
+                before + after);
+
+        List<String> classes = ImmutableList.of("A", "a/b/c/D", "a/b/c/D$E");
+        DexItemFactory factory = new DexItemFactory();
+        Path mainDexList = temp.getRoot().toPath().resolve("valid.txt");
+        FileUtils.writeTextFile(mainDexList, lines);
+        Set<DexType> types = parse(mainDexList, factory);
+        assertEquals(types.size(), classes.size());
+        for (String clazz : classes) {
+          DexType type = factory.createType("L" + clazz + ";");
+          assertTrue(types.contains(type));
+        }
+      }
     }
   }
 
@@ -376,18 +423,27 @@ public class MainDexListTests extends TestBase {
     parse(mainDexList, factory);
   }
 
+  enum TestMode {
+    FROM_CLASS_NAMES,
+    FROM_FILE,
+    FROM_FILE_WITH_BOM
+  }
+
   private Path runD8WithMainDexList(
-      CompilationMode mode, Path input, List<String> mainDexClasses, boolean useFile)
+      CompilationMode mode, Path input, List<String> mainDexClasses, TestMode testMode)
       throws Exception {
     Path testDir = temp.newFolder().toPath();
     Path listFile = testDir.resolve("main-dex-list.txt");
-    if (mainDexClasses != null && useFile) {
-      FileUtils.writeTextFile(
-          listFile,
-          mainDexClasses
-              .stream()
+    if (mainDexClasses != null
+        && (testMode == TestMode.FROM_FILE || testMode == TestMode.FROM_FILE_WITH_BOM)) {
+      List<String> lines =
+          mainDexClasses.stream()
               .map(clazz -> clazz.replace('.', '/') + ".class")
-              .collect(Collectors.toList()));
+              .collect(Collectors.toList());
+      if (testMode == TestMode.FROM_FILE_WITH_BOM) {
+        lines.set(0, StringUtils.BOM + lines.get(0));
+      }
+      FileUtils.writeTextFile(listFile, lines);
     }
 
     D8Command.Builder builder =
@@ -396,7 +452,7 @@ public class MainDexListTests extends TestBase {
             .setMode(mode)
             .setOutput(testDir, OutputMode.DexIndexed);
     if (mainDexClasses != null) {
-      if (useFile) {
+      if (testMode == TestMode.FROM_FILE) {
         builder.addMainDexListFiles(listFile);
       } else {
         builder.addMainDexClasses(mainDexClasses);
@@ -416,21 +472,25 @@ public class MainDexListTests extends TestBase {
       if (allClasses) {
         // If all classes are passed add a run without a main-dex list as well.
         testDirs.put(
-            runD8WithMainDexList(mode, input, null, true),
+            runD8WithMainDexList(mode, input, null, TestMode.FROM_CLASS_NAMES),
             mode.toString() + ": without a main-dex list");
       }
       testDirs.put(
-          runD8WithMainDexList(mode, input, mainDexClasses, true),
+          runD8WithMainDexList(mode, input, mainDexClasses, TestMode.FROM_FILE),
           mode.toString() + ": main-dex list files");
       testDirs.put(
-          runD8WithMainDexList(mode, input, mainDexClasses, false),
+          runD8WithMainDexList(mode, input, mainDexClasses, TestMode.FROM_FILE_WITH_BOM),
+          mode.toString() + ": main-dex list files (with BOM)");
+      testDirs.put(
+          runD8WithMainDexList(mode, input, mainDexClasses, TestMode.FROM_CLASS_NAMES),
           mode.toString() + ": main-dex classes");
       if (mainDexClasses != null) {
         testDirs.put(
-            runD8WithMainDexList(mode, input, Lists.reverse(mainDexClasses), true),
+            runD8WithMainDexList(mode, input, Lists.reverse(mainDexClasses), TestMode.FROM_FILE),
             mode.toString() + ": main-dex list files (reversed)");
         testDirs.put(
-            runD8WithMainDexList(mode, input, Lists.reverse(mainDexClasses), false),
+            runD8WithMainDexList(
+                mode, input, Lists.reverse(mainDexClasses), TestMode.FROM_CLASS_NAMES),
             mode.toString() + ": main-dex classes (reversed)");
       }
 

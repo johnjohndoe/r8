@@ -16,6 +16,7 @@ public class StringUtils {
   public static char[] EMPTY_CHAR_ARRAY = {};
   public static final String[] EMPTY_ARRAY = {};
   public static final String LINE_SEPARATOR = System.getProperty("line.separator");
+  public static final char BOM = '\uFEFF';
 
   public enum BraceType {
     PARENS,
@@ -259,5 +260,37 @@ public class StringUtils {
       builder.append(string);
     }
     return builder.toString();
+  }
+
+  public static boolean isBOM(int codePoint) {
+    return codePoint == BOM;
+  }
+
+  public static boolean isWhitespace(int codePoint) {
+    return Character.isWhitespace(codePoint) || isBOM(codePoint);
+  }
+
+  public static String stripLeadingBOM(String s) {
+    if (s.length() > 0 && s.charAt(0) == StringUtils.BOM) {
+      return s.substring(1);
+    } else {
+      return s;
+    }
+  }
+
+  public static String trim(String s) {
+    int beginIndex = 0;
+    int endIndex = s.length();
+    while (beginIndex < endIndex && isWhitespace(s.charAt(beginIndex))) {
+      beginIndex++;
+    }
+    while (endIndex - 1 > beginIndex && isWhitespace(s.charAt(endIndex - 1))) {
+      endIndex--;
+    }
+    if (beginIndex > 0 || endIndex < s.length()) {
+      return s.substring(beginIndex, endIndex);
+    } else {
+      return s;
+    }
   }
 }

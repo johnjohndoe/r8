@@ -42,7 +42,7 @@ public class MainDexList {
       ++lineNumber;
       int newLineIndex = lines.indexOf('\n', offset);
       int lineEnd = newLineIndex == -1 ? lines.length() : newLineIndex;
-      String line = lines.substring(offset, lineEnd).trim();
+      String line = StringUtils.trim(lines.substring(offset, lineEnd));
       if (!line.isEmpty()) {
         try {
           result.add(parseEntry(line, itemFactory));

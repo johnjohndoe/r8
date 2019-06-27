@@ -3,16 +3,25 @@
 // BSD-style license that can be found in the LICENSE file.
 package com.android.tools.r8.naming;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
+
+import com.android.tools.r8.TestBase;
 import com.android.tools.r8.ToolHelper;
 import com.android.tools.r8.position.Position;
+import com.android.tools.r8.utils.StringUtils;
 import com.google.common.collect.ImmutableList;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class ProguardMapReaderTest {
+public class ProguardMapReaderTest extends TestBase {
 
   private static final String ROOT = ToolHelper.EXAMPLES_BUILD_DIR;
   private static final String EXAMPLE_MAP = "throwing/throwing.map";
@@ -46,6 +55,71 @@ public class ProguardMapReaderTest {
     ClassNameMapper firstMapper = ClassNameMapper.mapperFromFile(Paths.get(ROOT, EXAMPLE_MAP));
     ClassNameMapper secondMapper = ClassNameMapper.mapperFromString(firstMapper.toString());
     Assert.assertEquals(firstMapper, secondMapper);
+  }
+
+  @Test
+  public void roundTripTestWithLeadingBOM() throws IOException {
+    ClassNameMapper firstMapper = ClassNameMapper.mapperFromFile(Paths.get(ROOT, EXAMPLE_MAP));
+    assertTrue(firstMapper.toString().charAt(0) != StringUtils.BOM);
+    ClassNameMapper secondMapper =
+        ClassNameMapper.mapperFromString(StringUtils.BOM + firstMapper.toString());
+    assertTrue(secondMapper.toString().charAt(0) != StringUtils.BOM);
+    Assert.assertEquals(firstMapper, secondMapper);
+    byte[] bytes = Files.readAllBytes(Paths.get(ROOT, EXAMPLE_MAP));
+    assertNotEquals(0xef, Byte.toUnsignedLong(bytes[0]));
+    Path mapFileWithBOM = writeTextToTempFile(StringUtils.BOM + firstMapper.toString());
+    bytes = Files.readAllBytes(mapFileWithBOM);
+    assertEquals(0xef, Byte.toUnsignedLong(bytes[0]));
+    assertEquals(0xbb, Byte.toUnsignedLong(bytes[1]));
+    assertEquals(0xbf, Byte.toUnsignedLong(bytes[2]));
+    ClassNameMapper thirdMapper = ClassNameMapper.mapperFromFile(mapFileWithBOM);
+    assertTrue(thirdMapper.toString().charAt(0) != StringUtils.BOM);
+    Assert.assertEquals(firstMapper, thirdMapper);
+  }
+
+  @Test
+  public void roundTripTestWithMultipleBOMsAndWhitespace() throws IOException {
+    List<String> ws =
+        ImmutableList.of(
+            "",
+            " ",
+            "  ",
+            "\t ",
+            " \t",
+            "" + StringUtils.BOM,
+            StringUtils.BOM + " " + StringUtils.BOM);
+    for (String whitespace : ws) {
+      ClassNameMapper firstMapper = ClassNameMapper.mapperFromFile(Paths.get(ROOT, EXAMPLE_MAP));
+      assertTrue(firstMapper.toString().charAt(0) != StringUtils.BOM);
+      StringBuilder buildWithWhitespace = new StringBuilder();
+      char prevChar = '\0';
+      for (char c : firstMapper.toString().toCharArray()) {
+        if (c == ':' || c == ' ') {
+          buildWithWhitespace.append(whitespace);
+          buildWithWhitespace.append(c);
+          buildWithWhitespace.append(whitespace);
+        } else if (c == '-' || c == '(') {
+          buildWithWhitespace.append(whitespace);
+          buildWithWhitespace.append(c);
+        } else if (c == '>' && prevChar == '-') {
+          buildWithWhitespace.append(c);
+          buildWithWhitespace.append(whitespace);
+        } else {
+          buildWithWhitespace.append(c);
+        }
+        prevChar = c;
+      }
+      ClassNameMapper secondMapper =
+          ClassNameMapper.mapperFromString(buildWithWhitespace.toString());
+      assertFalse(firstMapper.toString().contains("" + StringUtils.BOM));
+      Assert.assertEquals(firstMapper, secondMapper);
+      byte[] bytes = Files.readAllBytes(Paths.get(ROOT, EXAMPLE_MAP));
+      assertNotEquals(0xef, Byte.toUnsignedLong(bytes[0]));
+      Path mapFileWithBOM = writeTextToTempFile(StringUtils.BOM + firstMapper.toString());
+      ClassNameMapper thirdMapper = ClassNameMapper.mapperFromFile(mapFileWithBOM);
+      assertTrue(thirdMapper.toString().charAt(0) != StringUtils.BOM);
+      Assert.assertEquals(firstMapper, thirdMapper);
+    }
   }
 
   @Test
