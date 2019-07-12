@@ -156,7 +156,8 @@ public class InternalOptions {
       !Version.isDev() || System.getProperty("com.android.tools.r8.disableinlining") == null;
   public boolean enableInliningOfInvokesWithNullableReceivers = true;
   public boolean enableClassInlining = true;
-  public boolean enableClassStaticizer = true;
+  // TODO(119626580): Turn on class staticizer when fixed.
+  public boolean enableClassStaticizer = false;
   public boolean enableInitializedClassesAnalysis = true;
   public boolean enableSideEffectAnalysis = true;
   public boolean enableServiceLoaderRewriting = true;
