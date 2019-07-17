@@ -154,7 +154,9 @@ public class InternalOptions {
   public boolean enableNonNullTracking = true;
   public boolean enableInlining =
       !Version.isDev() || System.getProperty("com.android.tools.r8.disableinlining") == null;
-  public boolean enableInliningOfInvokesWithNullableReceivers = true;
+  public boolean enableInliningOfInvokesWithNullableReceivers =
+      System.getProperty("com.android.tools.r8.enableInliningOfInvokesWithNullableReceivers")
+          != null;
   public boolean enableClassInlining = true;
   // TODO(119626580): Turn on class staticizer when fixed.
   public boolean enableClassStaticizer = false;
