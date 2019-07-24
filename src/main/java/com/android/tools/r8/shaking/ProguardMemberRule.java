@@ -179,7 +179,7 @@ public class ProguardMemberRule {
           break;
         }
         // Annotations check.
-        return RootSetBuilder.containsAnnotation(annotation, field.annotations);
+        return RootSetBuilder.containsAnnotation(annotation, field);
       case FIELD:
         // Name check.
         String name = stringCache.lookupString(originalSignature.name);
@@ -196,7 +196,7 @@ public class ProguardMemberRule {
           break;
         }
         // Annotations check
-        if (!RootSetBuilder.containsAnnotation(annotation, field.annotations)) {
+        if (!RootSetBuilder.containsAnnotation(annotation, field)) {
           break;
         }
         return true;
@@ -224,7 +224,7 @@ public class ProguardMemberRule {
           break;
         }
         // Annotations check.
-        return RootSetBuilder.containsAnnotation(annotation, method.annotations);
+        return RootSetBuilder.containsAnnotation(annotation, method);
       case METHOD:
         // Check return type.
         if (!type.matches(originalSignature.proto.returnType, appView)) {
@@ -244,7 +244,7 @@ public class ProguardMemberRule {
           break;
         }
         // Annotations check.
-        if (!RootSetBuilder.containsAnnotation(annotation, method.annotations)) {
+        if (!RootSetBuilder.containsAnnotation(annotation, method)) {
           break;
         }
         // Parameter types check.
