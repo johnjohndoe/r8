@@ -97,12 +97,12 @@ public class Value {
         }
         break;
       case LONG:
-        if (typeLattice.isWide()) {
+        if (typeLattice.isWide() && !typeLattice.isDouble()) {
           return TypeLatticeElement.LONG;
         }
         break;
       case DOUBLE:
-        if (typeLattice.isWide()) {
+        if (typeLattice.isWide() && !typeLattice.isLong()) {
           return TypeLatticeElement.DOUBLE;
         }
         break;
